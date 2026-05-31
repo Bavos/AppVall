@@ -49,7 +49,7 @@ jobs:
         continue-on-error: true
 
       - name: Run Trivy (SCA)
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -63,9 +63,8 @@ jobs:
         uses: semgrep/semgrep-action@v1
         with:
           config: p/javascript
-          generateSarif: '1' # Opcional: bom para segurança se quiser exportar depois
         env:
-          SEMGREP_COMMAND: scan # Força o Semgrep a rodar o scan local sem pedir token de login
+          SEMGREP_COMMAND: scan
         continue-on-error: true
 
       - name: Generate Security Summary Report
@@ -83,7 +82,7 @@ jobs:
           echo "### 📂 Artifact Details" >> security-reports/security-summary.md
           echo "All reports are preserved in the **security-audit-reports** artifact under the run summary." >> security-reports/security-summary.md
           
-          # Escreve o relatório diretamente no sumário do GitHub Actions
+          # Escreve o relatório diretamente no sumário da execução no GitHub Actions
           cat security-reports/security-summary.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Security Reports Artifact
