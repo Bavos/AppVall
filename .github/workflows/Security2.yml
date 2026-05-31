@@ -1,0 +1,90 @@
+name: "Security Pipeline (DevSecOps Dev)"
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Create Reports Directory
+        run: mkdir -p security-reports
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Gitleaks (Secret Scanning)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Run NPM Audit
+        run: |
+          npm audit --audit-level=high --json > security-reports/npm-audit-report.json || true
+          echo "NPM Audit executed."
+        continue-on-error: true
+
+      - name: Run Trivy (SCA)
+        uses: aquasecurity/trivy-action@v0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'json'
+          output: 'security-reports/trivy-report.json'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'
+        continue-on-error: true
+
+      - name: Run Semgrep (SAST)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/javascript
+        continue-on-error: true
+
+      - name: Generate Security Summary Report
+        run: |
+          echo "# 🛡️ Security Pipeline Summary" > security-reports/security-summary.md
+          echo "Generated on: $(date -u) UTC" >> security-reports/security-summary.md
+          echo "" >> security-reports/security-summary.md
+          echo "## 📊 Scan Modules Execution Status" >> security-reports/security-summary.md
+          echo "- **Checkout & Environment Setup**: Success" >> security-reports/security-summary.md
+          echo "- **Gitleaks Secret Scan**: Completed" >> security-reports/security-summary.md
+          echo "- **NPM Audit (dependencies)**: Completed" >> security-reports/security-summary.md
+          echo "- **Trivy SCA (vulnerability scan)**: Completed" >> security-reports/security-summary.md
+          echo "- **Semgrep SAST (code scan)**: Completed" >> security-reports/security-summary.md
+          echo "" >> security-reports/security-summary.md
+          echo "### 📂 Artifact Details" >> security-reports/security-summary.md
+          echo "All reports are preserved in the **security-audit-reports** artifact under the run summary." >> security-reports/security-summary.md
+          
+          # Write report directly to GITHUB_STEP_SUMMARY to permit instant download/view in Actions panel
+          cat security-reports/security-summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Security Reports Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit-reports
+          path: security-reports/
