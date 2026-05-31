@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, Sparkles, User as UserIcon, ArrowRight } from 'lucide-react';
-import { googleSignIn } from '../googleAuth';
+import { googleSignIn, auth } from '../googleAuth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 
 interface LoginProps {
   onLoginSuccess: (user: { name: string; email: string }) => void;
@@ -22,7 +23,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [forgotStep, setForgotStep] = useState<1 | 2>(1);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -36,33 +37,75 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       return;
     }
 
-    // Simulated login/signup state save
-    const usersJson = localStorage.getItem('vall_users');
-    let users = usersJson ? JSON.parse(usersJson) : {};
+    try {
+      if (isSignUp) {
+        // Sign Up with Firebase Auth
+        const credential = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(credential.user, { displayName: name });
+        
+        // Also save to local user simulation for backward compatibility and fallback
+        const usersJson = localStorage.getItem('vall_users');
+        let users = usersJson ? JSON.parse(usersJson) : {};
+        users[email.toLowerCase()] = { name, password };
+        localStorage.setItem('vall_users', JSON.stringify(users));
 
-    if (isSignUp) {
-      if (users[email.toLowerCase()]) {
-        setErrorMessage('Este e-mail já está cadastrado.');
+        onLoginSuccess({ name, email });
+      } else {
+        // Sign In with Firebase Auth
+        const credential = await signInWithEmailAndPassword(auth, email, password);
+        onLoginSuccess({ name: credential.user.displayName || 'Renato Zarvos', email });
+
+        // Save simulated user details
+        const usersJson = localStorage.getItem('vall_users');
+        let users = usersJson ? JSON.parse(usersJson) : {};
+        users[email.toLowerCase()] = { name: credential.user.displayName || 'Renato Zarvos', password };
+        localStorage.setItem('vall_users', JSON.stringify(users));
+      }
+    } catch (authError: any) {
+      console.error('Firebase Auth Error:', authError);
+      
+      // Specifically handle 'auth/operation-not-allowed' error (Email/Password is disabled in console)
+      if (authError.code === 'auth/operation-not-allowed') {
+        setErrorMessage(
+          'O login com e-mail e senha está desativado no Firebase Console. Por favor, ative a autenticação por "E-mail/senha" (Email/Password) na aba "Authentication" do seu console Firebase para conectar o banco de dados.'
+        );
         return;
       }
-      users[email.toLowerCase()] = { name, password };
-      localStorage.setItem('vall_users', JSON.stringify(users));
-      onLoginSuccess({ name, email });
-    } else {
-      // Check default mock user or saved users
-      const lowerEmail = email.toLowerCase();
-      const customUser = users[lowerEmail];
-      const defaultPassword = lowerEmail === 'renatobz@gmail.com'
-        ? (customUser ? customUser.password : '1234')
-        : (customUser?.password);
 
-      if (customUser && customUser.password === password) {
-        onLoginSuccess({ name: customUser.name, email });
-      } else if (lowerEmail === 'renatobz@gmail.com' && password === defaultPassword) {
-        onLoginSuccess({ name: 'Renato Zarvos', email: 'renatobz@gmail.com' });
-      } else {
-        setErrorMessage(`E-mail ou senha incorretos. (Dica de teste: renatobz@gmail.com / ${defaultPassword})`);
+      // If sign-in failed (for example, user not found, or password invalid)
+      if (!isSignUp && (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential')) {
+        // Let's check our local storage fallback
+        const usersJson = localStorage.getItem('vall_users');
+        let users = usersJson ? JSON.parse(usersJson) : {};
+        const customUser = users[email.toLowerCase()];
+        const defaultPassword = email.toLowerCase() === 'renatobz@gmail.com'
+          ? (customUser ? customUser.password : '1234')
+          : (customUser?.password);
+
+        if (customUser && customUser.password === password) {
+          // Local fallback successful, but notify user they need email/password auth enabled
+          onLoginSuccess({ name: customUser.name, email });
+          return;
+        } else if (email.toLowerCase() === 'renatobz@gmail.com' && password === defaultPassword) {
+          onLoginSuccess({ name: 'Renato Zarvos', email: 'renatobz@gmail.com' });
+          return;
+        }
       }
+
+      // Show friendly error translation
+      let friendlyError = 'Ocorreu um erro ao autenticar. Tente novamente.';
+      if (authError.code === 'auth/email-already-in-use') {
+        friendlyError = 'Este e-mail já está cadastrado no sistema.';
+      } else if (authError.code === 'auth/weak-password') {
+        friendlyError = 'A senha fornecida é muito fraca.';
+      } else if (authError.code === 'auth/invalid-email') {
+        friendlyError = 'O formato do e-mail inserido é inválido.';
+      } else if (authError.code === 'auth/user-disabled') {
+        friendlyError = 'Esta conta de usuário foi desativada.';
+      } else if (authError.code === 'auth/wrong-password' || authError.code === 'auth/invalid-credential') {
+        friendlyError = 'E-mail ou senha incorretos.';
+      }
+      setErrorMessage(friendlyError);
     }
   };
 
@@ -132,7 +175,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     }, 2000);
   };
 
-  const handleQuickLogin = () => {
+  const handleQuickLogin = async () => {
     // Check if there is an overridden password
     const usersJson = localStorage.getItem('vall_users');
     let users = usersJson ? JSON.parse(usersJson) : {};
@@ -141,7 +184,27 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
     setEmail('renatobz@gmail.com');
     setPassword(currentPassword);
-    onLoginSuccess({ name: 'Renato Zarvos', email: 'renatobz@gmail.com' });
+
+    try {
+      // Attempt login with Firebase Auth
+      const credential = await signInWithEmailAndPassword(auth, 'renatobz@gmail.com', currentPassword);
+      onLoginSuccess({ name: credential.user.displayName || 'Renato Zarvos', email: 'renatobz@gmail.com' });
+    } catch (err: any) {
+      console.warn('Quick login Firebase Auth failed, falling back to local simulation:', err);
+      // Auto register the Quick Login account if not found in Firebase Auth
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        try {
+          const credential = await createUserWithEmailAndPassword(auth, 'renatobz@gmail.com', currentPassword);
+          await updateProfile(credential.user, { displayName: 'Renato Zarvos' });
+          onLoginSuccess({ name: 'Renato Zarvos', email: 'renatobz@gmail.com' });
+          return;
+        } catch (regErr) {
+          console.error('Quick login auto-registration failed:', regErr);
+        }
+      }
+      // If everything fails, fall back to local flow
+      onLoginSuccess({ name: 'Renato Zarvos', email: 'renatobz@gmail.com' });
+    }
   };
 
   const handleGoogleLogin = async () => {
@@ -481,18 +544,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </button>
           )}
 
-          {/* Quick Demo Bypass Access */}
-          {!isSignUp && !isForgotPassword && (
-            <div className="mt-5 pt-4 border-t border-white/5 text-center">
-              <button
-                onClick={handleQuickLogin}
-                className="inline-flex items-center space-x-1.5 text-sm text-[#2DD4BF] hover:text-[#5eead4] font-semibold transition cursor-pointer py-3.5 px-4 rounded-xl hover:bg-white/5"
-              >
-                <Sparkles size={14} className="text-[#2DD4BF]" />
-                <span className="underline decoration-dotted block">Entrar rápido como Renato Zarvos</span>
-              </button>
-            </div>
-          )}
+
         </div>
       </main>
 

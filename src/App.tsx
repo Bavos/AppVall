@@ -6,8 +6,8 @@ import Dashboard from './components/Dashboard';
 import TaskCenter from './components/TaskCenter';
 import AddTask from './components/AddTask';
 import Login from './components/Login';
-import { User } from 'firebase/auth';
-import { initAuth, googleSignIn, logoutGoogle, deleteGoogleCalendarEvent, db, handleFirestoreError, OperationType, cleanUndefined } from './googleAuth';
+import { User, onAuthStateChanged } from 'firebase/auth';
+import { initAuth, googleSignIn, logoutGoogle, deleteGoogleCalendarEvent, db, handleFirestoreError, OperationType, cleanUndefined, auth } from './googleAuth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDocFromServer } from 'firebase/firestore';
 
 export default function App() {
@@ -23,6 +23,7 @@ export default function App() {
     return null;
   });
 
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [activeTab, setActiveTab] = useState<ViewTab>('dashboard');
@@ -83,6 +84,7 @@ export default function App() {
       (user, token) => {
         setGoogleUser(user);
         setGoogleToken(token);
+        setFirebaseUser(user);
       },
       () => {
         // Prevent clearing state during initial Firebase loads/refreshes if we have a cached Google token
@@ -94,8 +96,13 @@ export default function App() {
       }
     );
 
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+    });
+
     return () => {
       if (unsubscribe) unsubscribe();
+      if (unsubscribeAuth) unsubscribeAuth();
     };
   }, []);
 
@@ -106,7 +113,7 @@ export default function App() {
     }
   }, [tasks, currentUser]);
 
-  // Sync tasks in real-time from Firestore when currentUser and authenticated googleUser are present
+  // Sync tasks in real-time from Firestore when currentUser and authenticated firebaseUser are present
   useEffect(() => {
     if (!currentUser) {
       setTasks([]);
@@ -115,7 +122,7 @@ export default function App() {
 
     // Only set up real-time listener if we have a valid, authenticated Firebase Auth user session
     // to satisfy "Only attach onSnapshot listeners if auth is ready and user is authenticated"
-    if (!googleUser || !googleUser.uid) {
+    if (!firebaseUser || !firebaseUser.uid) {
       return;
     }
 
@@ -157,7 +164,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser, googleUser]);
+  }, [currentUser, firebaseUser]);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -224,7 +231,7 @@ export default function App() {
 
     const updatedTask = { ...task, status: nextStatus };
 
-    if (googleUser && googleUser.uid) {
+    if (firebaseUser && firebaseUser.uid) {
       try {
         await setDoc(doc(db, 'tasks', id), cleanUndefined(updatedTask));
         triggerToast(`Status alterado para "${nextStatus}"`);
@@ -246,7 +253,7 @@ export default function App() {
   const handleDeleteTask = async (id: string) => {
     const taskToDelete = tasks.find((t) => t.id === id);
 
-    if (googleUser && googleUser.uid) {
+    if (firebaseUser && firebaseUser.uid) {
       try {
         await deleteDoc(doc(db, 'tasks', id));
         triggerToast('Tarefa removida do banco de dados');
@@ -278,7 +285,7 @@ export default function App() {
 
   // Atualizar dados de uma tarefa existente
   const handleUpdateTask = async (updatedTask: Task) => {
-    if (googleUser && googleUser.uid) {
+    if (firebaseUser && firebaseUser.uid) {
       try {
         await setDoc(doc(db, 'tasks', updatedTask.id), cleanUndefined(updatedTask));
         triggerToast('Alterações gravadas com sucesso');
@@ -308,7 +315,7 @@ export default function App() {
       userEmail: currentUser?.email.toLowerCase() || 'renatobz@gmail.com'
     };
 
-    if (googleUser && googleUser.uid) {
+    if (firebaseUser && firebaseUser.uid) {
       try {
         await setDoc(doc(db, 'tasks', taskId), cleanUndefined(newTask));
         triggerToast('Nova tarefa agendada');
@@ -333,7 +340,7 @@ export default function App() {
 
     const updatedTask = { ...task, actualMinutes: task.actualMinutes + mins };
 
-    if (googleUser && googleUser.uid) {
+    if (firebaseUser && firebaseUser.uid) {
       try {
         await setDoc(doc(db, 'tasks', taskId), cleanUndefined(updatedTask));
       } catch (error) {
@@ -355,11 +362,23 @@ export default function App() {
     localStorage.setItem('vall_sessions', JSON.stringify(updated));
   };
 
-  // Logout simulado com feedback elegante
-  const handleLogout = () => {
+  // Logout com feedback elegante e limpeza do Firebase Auth
+  const handleLogout = async () => {
     const userName = currentUser?.name || 'Renato Zarvos';
+    try {
+      await auth.signOut();
+    } catch (e) {
+      console.warn('Silent sign out warning:', e);
+    }
     setCurrentUser(null);
     localStorage.removeItem('vall_current_user');
+    // Clear Google token as well
+    localStorage.removeItem('vall_google_token');
+    localStorage.removeItem('vall_google_email');
+    localStorage.removeItem('vall_google_name');
+    setGoogleUser(null);
+    setGoogleToken(null);
+    setFirebaseUser(null);
     triggerToast(`Até logo, ${userName}! Painel fechado de forma segura.`);
   };
 
