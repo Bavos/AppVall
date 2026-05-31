@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "Task": {
+      "title": "Task",
+      "description": "Uma tarefa ou compromisso agendado no sistema Vall",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador único da tarefa"
+        },
+        "title": {
+          "type": "string",
+          "description": "Título ou resumo da tarefa"
+        },
+        "description": {
+          "type": "string",
+          "description": "Descrição detalhada complementar"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Data de realização no formato YYYY-MM-DD"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Agendamento", "Curinga", "Disponível", "Notas"],
+          "description": "Categoria da tarefa"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["Alta", "Média", "Baixa"],
+          "description": "Nível de prioridade"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Pendente", "Em Progresso", "Concluída"],
+          "description": "Status de execução atual"
+        },
+        "estimatedMinutes": {
+          "type": "integer",
+          "description": "Tempo estimado em minutos"
+        },
+        "actualMinutes": {
+          "type": "integer",
+          "description": "Tempo gasto ou focado em minutos"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Data/hora de criação"
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "E-mail do usuário dono da tarefa"
+        },
+        "googleEventId": {
+          "type": "string",
+          "description": "ID do compromisso no Google Agenda se houver"
+        },
+        "googleEventLink": {
+          "type": "string",
+          "description": "Link público do evento no Google Agenda se houver"
+        },
+        "googleMeetLink": {
+          "type": "string",
+          "description": "Link da sala de reuniões do Google Meet se houver"
+        },
+        "rsvpStatus": {
+          "type": "string",
+          "enum": ["accepted", "declined", "tentative", "needsAction"],
+          "description": "Status respondido de convite RSVP"
+        },
+        "email": {
+          "type": "string",
+          "description": "E-mail de participante secundário ou convidado"
+        },
+        "time": {
+          "type": "string",
+          "description": "Horário no formato HH:MM"
+        }
+      },
+      "required": ["id", "title", "date", "category", "priority", "status", "userEmail"]
+    }
+  },
+  "firestore": {
+    "tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Coleção de tarefas do sistema vinculadas por e-mail de usuário"
+    }
+  }
+}
