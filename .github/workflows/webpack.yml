@@ -63,6 +63,9 @@ jobs:
         uses: semgrep/semgrep-action@v1
         with:
           config: p/javascript
+          generateSarif: '1' # Opcional: bom para segurança se quiser exportar depois
+        env:
+          SEMGREP_COMMAND: scan # Força o Semgrep a rodar o scan local sem pedir token de login
         continue-on-error: true
 
       - name: Generate Security Summary Report
@@ -80,7 +83,7 @@ jobs:
           echo "### 📂 Artifact Details" >> security-reports/security-summary.md
           echo "All reports are preserved in the **security-audit-reports** artifact under the run summary." >> security-reports/security-summary.md
           
-          # Write report directly to GITHUB_STEP_SUMMARY to permit instant download/view in Actions panel
+          # Escreve o relatório diretamente no sumário do GitHub Actions
           cat security-reports/security-summary.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Security Reports Artifact
