@@ -1,0 +1,51 @@
+name: Security Pipeline (DevSecOps Dev)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security_audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Código-Fonte
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Necessário para varredura de Gitleaks de histórico completo
+
+      - name: Instalar Ambiente de Execução Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Step 1: Auditoria Preventiva contra vazamentos de credenciais no repositório
+      - name: Secret Scanning com Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 2: Auditoria de vulnerabilidades de dependências externas nativa do NPM
+      - name: Auditoria de Dependências de Terceiros (NPM Audit)
+        run: |
+          npm ci
+          # Falha o build se encontrar vulnerabilidades com severidade high ou critical
+          npm audit --audit-level=high
+
+      # Step 3: Análise profunda de composição de software (SCA) com Trivy
+      - name: Varredura de Vulnerabilidades do Repositório (Trivy SCA)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'table'
+          exit-code: '1' # Falha o fluxo se encontrar vulnerabilidades
+          severity: 'HIGH,CRITICAL'
+
+      # Step 4: Análise Estática de Código Proprietário (SAST) com Semgrep
+      - name: Varredura Estática de Padrões Inseguros (Semgrep SAST)
+        run: |
+          python3 -m pip install semgrep
+          semgrep scan --config auto --error
