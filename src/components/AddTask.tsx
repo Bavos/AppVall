@@ -42,9 +42,14 @@ export default function AddTask({
   const priorities: Priority[] = ['Baixa', 'Média', 'Alta'];
   const presetMinutes = [15, 25, 45, 60, 90];
 
+  const isSubmittingRef = React.useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
+
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
 
     let googleEventId: string | undefined;
     let googleEventLink: string | undefined;
@@ -56,60 +61,66 @@ export default function AddTask({
       ? description.trim()
       : '';
 
-    if (syncGoogle && googleToken) {
-      setIsSyncing(true);
-      setSyncError(null);
-      try {
-        const eventRes = await createGoogleCalendarEvent(googleToken, {
-          title: title.trim(),
-          description: eventDesc,
-          date,
-          time: category === 'Agendamento' && time ? time : undefined,
-          category,
-          priority,
-          estimatedMinutes,
-          email: category === 'Agendamento' && email ? email.trim() : undefined
-        });
-        if (eventRes) {
-          googleEventId = eventRes.id;
-          googleEventLink = eventRes.htmlLink;
-          googleMeetLink = eventRes.hangoutLink;
+    try {
+      if (syncGoogle && googleToken) {
+        setIsSyncing(true);
+        setSyncError(null);
+        try {
+          const eventRes = await createGoogleCalendarEvent(googleToken, {
+            title: title.trim(),
+            description: eventDesc,
+            date,
+            time: category === 'Agendamento' && time ? time : undefined,
+            category,
+            priority,
+            estimatedMinutes,
+            email: category === 'Agendamento' && email ? email.trim() : undefined
+          });
+          if (eventRes) {
+            googleEventId = eventRes.id;
+            googleEventLink = eventRes.htmlLink;
+            googleMeetLink = eventRes.hangoutLink;
+          }
+        } catch (err: any) {
+          console.error('Failed to sync to Google Calendar:', err);
+          setSyncError('Não foi possível gravar no Google Agenda, mas a tarefa foi criada localmente.');
+        } finally {
+          setIsSyncing(false);
         }
-      } catch (err: any) {
-        console.error('Failed to sync to Google Calendar:', err);
-        setSyncError('Não foi possível gravar no Google Agenda, mas a tarefa foi criada localmente.');
-      } finally {
-        setIsSyncing(false);
       }
+
+      onAddTask({
+        title: title.trim(),
+        description: category === 'Notas' ? description.trim() : undefined,
+        category,
+        priority,
+        status, // Pass custom status
+        date,
+        time: category === 'Agendamento' && time ? time : undefined,
+        estimatedMinutes,
+        googleEventId,
+        googleEventLink,
+        googleMeetLink,
+        email: category === 'Agendamento' ? email.trim() : undefined
+      });
+
+      // Mostra alerta de sucesso e limpa formulário
+      setAlertSuccess(true);
+      setTitle('');
+      setDescription('');
+      setEmail('');
+      setTime('');
+      setStatus('Pendente');
+      
+      setTimeout(() => {
+        setAlertSuccess(false);
+        onChangeTab('dashboard'); // Redireciona para o Painel Geral para ver a lista atualizada
+        isSubmittingRef.current = false;
+      }, 2000);
+    } catch (err) {
+      console.error('Error during submit:', err);
+      isSubmittingRef.current = false;
     }
-
-    onAddTask({
-      title: title.trim(),
-      description: category === 'Notas' ? description.trim() : undefined,
-      category,
-      priority,
-      status, // Pass custom status
-      date,
-      time: category === 'Agendamento' && time ? time : undefined,
-      estimatedMinutes,
-      googleEventId,
-      googleEventLink,
-      googleMeetLink,
-      email: category === 'Agendamento' ? email.trim() : undefined
-    });
-
-    // Mostra alerta de sucesso e limpa formulário
-    setAlertSuccess(true);
-    setTitle('');
-    setDescription('');
-    setEmail('');
-    setTime('');
-    setStatus('Pendente');
-    
-    setTimeout(() => {
-      setAlertSuccess(false);
-      onChangeTab('dashboard'); // Redireciona para o Painel Geral para ver a lista atualizada
-    }, 2000);
   };
 
   return (

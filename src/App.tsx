@@ -85,8 +85,12 @@ export default function App() {
         setGoogleToken(token);
       },
       () => {
-        setGoogleUser(null);
-        setGoogleToken(null);
+        // Prevent clearing state during initial Firebase loads/refreshes if we have a cached Google token
+        const hasToken = localStorage.getItem('vall_google_token');
+        if (!hasToken) {
+          setGoogleUser(null);
+          setGoogleToken(null);
+        }
       }
     );
 
@@ -162,6 +166,25 @@ export default function App() {
         setGoogleUser(result.user);
         setGoogleToken(result.accessToken);
         triggerToast('Google Agenda conectada!');
+
+        // Safe migration: upload any local-only tasks created offline/disconnected to Firestore 
+        const emailToFilter = currentUser?.email.toLowerCase() || 'renatobz@gmail.com';
+        const localTasksRaw = localStorage.getItem('vall_tasks');
+        if (localTasksRaw) {
+          try {
+            const localTasks: Task[] = JSON.parse(localTasksRaw);
+            const tasksToMigrate = localTasks.filter(t => t.userEmail === emailToFilter || !t.userEmail);
+            for (const t of tasksToMigrate) {
+              const migratedTask = {
+                ...t,
+                userEmail: emailToFilter
+              };
+              await setDoc(doc(db, 'tasks', t.id), cleanUndefined(migratedTask));
+            }
+          } catch (migrateErr) {
+            console.error('Failed to migrate local tasks to firestore during sign in:', migrateErr);
+          }
+        }
       }
     } catch (e) {
       console.error(e);

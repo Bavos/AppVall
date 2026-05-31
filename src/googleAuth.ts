@@ -94,11 +94,10 @@ export const initAuth = (
         if (onAuthFailure) onAuthFailure();
       }
     } else {
-      // If Firebase user is signed out, clear cache
+      // If of type true sign-out or session end. But the initial load often triggers with null before Firebase Auth finishes loading.
+      // Therefore, to prevent session-wiping on page reloads/exits, we DO NOT automatically clear Google token localStorage keys here.
+      // Standard logout explicitly calls logoutGoogle() which does the cleanups.
       cachedAccessToken = null;
-      localStorage.removeItem('vall_google_token');
-      localStorage.removeItem('vall_google_email');
-      localStorage.removeItem('vall_google_name');
       if (onAuthFailure) onAuthFailure();
     }
   });
