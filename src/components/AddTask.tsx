@@ -208,22 +208,6 @@ export default function AddTask({
               />
             </div>
 
-            {/* Status */}
-            <div className="space-y-2">
-              <label className="text-gray-300 text-xs font-bold tracking-widest uppercase block">
-                Status *
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as TaskStatus)}
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-[#2DD4BF]/55 focus:ring-1 focus:ring-[#2DD4BF]/30 transition min-h-[48px] cursor-pointer"
-              >
-                <option value="Pendente" className="bg-neutral-900 text-white">Pendente</option>
-                <option value="Em Progresso" className="bg-neutral-900 text-white">Em Progresso</option>
-                <option value="Concluída" className="bg-neutral-900 text-white">Concluída</option>
-              </select>
-            </div>
-
             {/* Hora */}
             <div className="space-y-2">
               <label className="text-gray-300 text-xs font-bold tracking-widest uppercase block">
@@ -260,21 +244,6 @@ export default function AddTask({
               />
             </div>
 
-            {/* Status */}
-            <div className="space-y-2">
-              <label className="text-gray-300 text-xs font-bold tracking-widest uppercase block">
-                Status *
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as TaskStatus)}
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-[#2DD4BF]/55 focus:ring-1 focus:ring-[#2DD4BF]/30 transition min-h-[48px] cursor-pointer"
-              >
-                <option value="Pendente" className="bg-neutral-900 text-white">Pendente</option>
-                <option value="Em Progresso" className="bg-neutral-900 text-white">Em Progresso</option>
-                <option value="Concluída" className="bg-neutral-900 text-white">Concluída</option>
-              </select>
-            </div>
           </>
         )}
 
