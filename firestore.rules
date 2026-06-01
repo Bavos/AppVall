@@ -34,7 +34,9 @@ service cloud.firestore {
         && (!('googleMeetLink' in data) || (data.googleMeetLink is string && data.googleMeetLink.size() <= 1024))
         && (!('rsvpStatus' in data) || (data.rsvpStatus is string && (data.rsvpStatus == 'accepted' || data.rsvpStatus == 'declined' || data.rsvpStatus == 'tentative' || data.rsvpStatus == 'needsAction')))
         && (!('email' in data) || (data.email is string && data.email.size() <= 150))
-        && (!('time' in data) || (data.time is string && data.time.size() <= 10));
+        && (!('time' in data) || (data.time is string && data.time.size() <= 10))
+        && (!('notificationLeadTime' in data) || data.notificationLeadTime is int)
+        && (!('notificationSent' in data) || data.notificationSent is bool);
     }
 
     match /tasks/{taskId} {

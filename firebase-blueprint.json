@@ -78,6 +78,14 @@
         "time": {
           "type": "string",
           "description": "Horário no formato HH:MM"
+        },
+        "notificationLeadTime": {
+          "type": "integer",
+          "description": "Tempo antecedente de envio de notificação em minutos"
+        },
+        "notificationSent": {
+          "type": "boolean",
+          "description": "Marcador de notificação enviada"
         }
       },
       "required": ["id", "title", "date", "category", "priority", "status", "userEmail"]

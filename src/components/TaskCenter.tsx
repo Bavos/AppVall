@@ -220,6 +220,7 @@ export default function TaskCenter({
   const [editEmail, setEditEmail] = useState('');
   const [editStatus, setEditStatus] = useState<TaskStatus>('Pendente');
   const [editTime, setEditTime] = useState('');
+  const [editNotificationLeadTime, setEditNotificationLeadTime] = useState<number>(15);
 
   // Gera os 7 dias centrados no dia de hoje para o carrossel de datas dinamicamente
   const getCalendarDays = () => {
@@ -262,10 +263,16 @@ export default function TaskCenter({
     setEditEmail(task.email || '');
     setEditStatus(task.status);
     setEditTime(task.time || '');
+    setEditNotificationLeadTime(task.notificationLeadTime !== undefined ? task.notificationLeadTime : 15);
   };
 
   const saveEdit = (task: Task) => {
     if (!editTitle.trim()) return;
+    const isScheduleChanged = 
+      task.time !== (editCategory === 'Agendamento' && editTime ? editTime : undefined) ||
+      task.category !== editCategory ||
+      task.notificationLeadTime !== (editCategory === 'Agendamento' ? editNotificationLeadTime : undefined);
+
     onUpdateTask({
       ...task,
       title: editTitle.trim(),
@@ -275,7 +282,9 @@ export default function TaskCenter({
       estimatedMinutes: Number(editEstimated) || 25,
       email: editCategory === 'Agendamento' ? editEmail.trim() : undefined,
       status: editStatus,
-      time: editCategory === 'Agendamento' && editTime ? editTime : undefined
+      time: editCategory === 'Agendamento' && editTime ? editTime : undefined,
+      notificationLeadTime: editCategory === 'Agendamento' ? editNotificationLeadTime : undefined,
+      notificationSent: editCategory === 'Agendamento' ? (isScheduleChanged ? false : (task.notificationSent || false)) : undefined
     });
     setEditingTaskId(null);
   };
@@ -506,6 +515,22 @@ export default function TaskCenter({
                             onChange={(e) => setEditTime(e.target.value)}
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-[#2DD4BF] cursor-pointer min-h-[48px]"
                           />
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-300 uppercase tracking-widest font-bold mb-1.5 block">Lembrete de Antecedência *</label>
+                          <select
+                            value={editNotificationLeadTime}
+                            onChange={(e) => setEditNotificationLeadTime(Number(e.target.value))}
+                            className="w-full bg-neutral-900 border border-white/10 rounded-2xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-[#2DD4BF] min-h-[48px] cursor-pointer"
+                          >
+                            <option value={0}>No horário do evento</option>
+                            <option value={5}>5 minutos antes</option>
+                            <option value={15}>15 minutos antes</option>
+                            <option value={30}>30 minutos antes</option>
+                            <option value={60}>1 hora antes</option>
+                            <option value={1440}>1 dia antes</option>
+                          </select>
                         </div>
                       </>
                     )}

@@ -20,6 +20,8 @@ export interface Task {
   rsvpStatus?: 'accepted' | 'declined' | 'tentative' | 'needsAction';
   email?: string;
   time?: string; // HH:MM
+  notificationLeadTime?: number; // minutos de antecedência (e.g. 0, 5, 15, 30, 60)
+  notificationSent?: boolean; // indicador de que a notificação já foi disparada
 }
 
 export interface FocusSession {

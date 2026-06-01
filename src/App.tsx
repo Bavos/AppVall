@@ -134,6 +134,50 @@ export default function App() {
     };
   }, []);
 
+  const [activeAlerts, setActiveAlerts] = useState<any[]>([]);
+
+  // Periodically poll for pending event notifications from backend background worker
+  useEffect(() => {
+    if (!currentUser) {
+      setActiveAlerts([]);
+      return;
+    }
+
+    const fetchAlerts = async () => {
+      try {
+        const offset = new Date().getTimezoneOffset();
+        const res = await fetch(`/api/notifications?email=${encodeURIComponent(currentUser.email)}&tzOffset=${offset}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.notifications && Array.isArray(data.notifications)) {
+            setActiveAlerts(data.notifications);
+          }
+        }
+      } catch (err) {
+        console.error('Falha ao buscar lembretes:', err);
+      }
+    };
+
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 10000); // Polling cada 10 segundos
+
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
+  const handleDismissAlert = async (id: string) => {
+    try {
+      await fetch('/api/notifications/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      setActiveAlerts(prev => prev.filter(a => a.id !== id));
+    } catch (err) {
+      console.error('Erro ao descartar alerta:', err);
+      setActiveAlerts(prev => prev.filter(a => a.id !== id));
+    }
+  };
+
   // Cache current tasks state to localStorage for local durability
   useEffect(() => {
     if (currentUser && tasks.length > 0) {
@@ -538,6 +582,72 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Pop-up de Lembretes Evento */}
+      {activeAlerts.length > 0 && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in" id="event_alert_modal">
+          <div className="bg-neutral-900 border border-[#2DD4BF]/30 p-6 rounded-[2rem] w-full max-w-sm space-y-6 shadow-[0_10px_30px_rgba(45,212,191,0.15)] relative animate-fade-in" style={{ contentVisibility: 'auto' }}>
+            
+            {/* Header Badge */}
+            <div className="flex items-center space-x-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] animate-ping" />
+              <span className="text-[10px] bg-[#2DD4BF]/10 text-[#2DD4BF] px-2.5 py-1 rounded-full font-bold uppercase tracking-widest font-mono border border-[#2DD4BF]/20">
+                Lembrete de Evento
+              </span>
+            </div>
+
+            {/* Event Name & Metadata */}
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black uppercase tracking-tight text-white leading-tight">
+                {activeAlerts[0].title}
+              </h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                Este compromisso está agendado para iniciar em breve. Prepare seu material ou sala virtual.
+              </p>
+            </div>
+
+            {/* Info Cards */}
+            <div className="grid grid-cols-2 gap-3 pb-2 font-mono text-xs">
+              <div className="bg-white/5 border border-white/5 rounded-xl p-3.5 space-y-1">
+                <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest block font-sans">Horário</span>
+                <span className="text-white text-base font-bold">{activeAlerts[0].time || '--:--'}</span>
+              </div>
+              <div className="bg-white/5 border border-white/5 rounded-xl p-3.5 space-y-1">
+                <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest block font-sans">Envolvido</span>
+                <span className="text-white truncate block font-mono" title={activeAlerts[0].task?.email || 'Nenhum'}>
+                  {activeAlerts[0].task?.email || 'Nenhum'}
+                </span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col gap-2.5 pt-2">
+              <button
+                onClick={() => {
+                  const alert = activeAlerts[0];
+                  handleDismissAlert(alert.id);
+                  setActiveDate(alert.date);
+                  setActiveTab('tasks');
+                }}
+                className="w-full bg-[#2DD4BF] hover:bg-[#20bda8] text-black font-extrabold text-sm py-4 rounded-2xl transition active:scale-95 shadow-[0_4px_12px_rgba(45,212,191,0.2)] cursor-pointer min-h-[44px]"
+                id="alert_btn_details"
+              >
+                Ver Detalhes do Evento
+              </button>
+              
+              <button
+                onClick={() => {
+                  handleDismissAlert(activeAlerts[0].id);
+                }}
+                className="w-full border border-white/10 hover:border-white/20 hover:bg-white/5 text-gray-300 hover:text-white font-semibold text-xs py-3.5 rounded-2xl transition active:scale-95 cursor-pointer min-h-[44px]"
+                id="alert_btn_dismiss"
+              >
+                Descartar Lembrete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 4. BARRA DE NAVEGAÇÃO INFERIOR ESTILIZADA (Bottom Nav) */}
       <nav 

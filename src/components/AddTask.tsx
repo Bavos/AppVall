@@ -33,6 +33,7 @@ export default function AddTask({
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<TaskStatus>('Pendente');
   const [time, setTime] = useState('');
+  const [notificationLeadTime, setNotificationLeadTime] = useState<number>(15);
 
   const [syncGoogle, setSyncGoogle] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -101,7 +102,9 @@ export default function AddTask({
         googleEventId,
         googleEventLink,
         googleMeetLink,
-        email: category === 'Agendamento' ? email.trim() : undefined
+        email: category === 'Agendamento' ? email.trim() : undefined,
+        notificationLeadTime: category === 'Agendamento' ? notificationLeadTime : undefined,
+        notificationSent: category === 'Agendamento' ? false : undefined
       });
 
       // Mostra alerta de sucesso e limpa formulário
@@ -223,6 +226,26 @@ export default function AddTask({
                   className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 cursor-pointer text-left py-2"
                 />
               </div>
+            </div>
+
+            {/* Tempo de Antecedência Lembrete */}
+            <div className="space-y-2" id="id_notification_lead_time_container">
+              <label className="text-gray-300 text-xs font-bold tracking-widest uppercase block">
+                Lembrete de Antecedência *
+              </label>
+              <select
+                value={notificationLeadTime}
+                onChange={(e) => setNotificationLeadTime(Number(e.target.value))}
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-[#2DD4BF]/55 focus:ring-1 focus:ring-[#2DD4BF]/30 transition min-h-[48px] cursor-pointer"
+                id="id_notification_lead_time_select"
+              >
+                <option value={0} className="bg-neutral-900 text-white">No horário do evento</option>
+                <option value={5} className="bg-neutral-900 text-white">5 minutos antes</option>
+                <option value={15} className="bg-neutral-900 text-white">15 minutos antes</option>
+                <option value={30} className="bg-neutral-900 text-white">30 minutos antes</option>
+                <option value={60} className="bg-neutral-900 text-white">1 hora antes</option>
+                <option value={1440} className="bg-neutral-900 text-white">1 dia antes</option>
+              </select>
             </div>
           </>
         )}
