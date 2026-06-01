@@ -15,6 +15,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Field validation touched states
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [nameTouched, setNameTouched] = useState(false);
 
   // Password Recovery States
   const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -23,19 +29,43 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [forgotStep, setForgotStep] = useState<1 | 2>(1);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Real-time Validation Helpers
+  const getEmailError = () => {
+    if (!email) return 'Por favor, preencha o e-mail.';
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return 'Formato de e-mail inválido.';
+    return null;
+  };
+
+  const getPasswordError = () => {
+    if (!password) return 'Por favor, preencha a senha.';
+    if (password.length < 4) return 'A senha deve ter pelo menos 4 caracteres.';
+    return null;
+  };
+
+  const getNameError = () => {
+    if (isSignUp && !name) return 'Por favor, preencha o nome completo.';
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!email || !password || (isSignUp && !name)) {
-      setErrorMessage('Por favor, preencha todos os campos obrigatórios.');
+    // Touch all fields to show any inline validation errors
+    setEmailTouched(true);
+    setPasswordTouched(true);
+    setNameTouched(true);
+
+    const emailErr = getEmailError();
+    const passwordErr = getPasswordError();
+    const nameErr = getNameError();
+
+    if (emailErr || passwordErr || nameErr) {
       return;
     }
 
-    if (password.length < 4) {
-      setErrorMessage('A senha deve ter pelo menos 4 caracteres.');
-      return;
-    }
+    setIsSubmitting(true);
 
     try {
       if (isSignUp) {
@@ -106,6 +136,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         friendlyError = 'E-mail ou senha incorretos.';
       }
       setErrorMessage(friendlyError);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -259,6 +291,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 onClick={() => {
                   setIsSignUp(false);
                   setErrorMessage(null);
+                  setEmailTouched(false);
+                  setPasswordTouched(false);
+                  setNameTouched(false);
                 }}
                 className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider rounded-xl transition-all active:scale-95 cursor-pointer ${
                   !isSignUp
@@ -272,6 +307,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 onClick={() => {
                   setIsSignUp(true);
                   setErrorMessage(null);
+                  setEmailTouched(false);
+                  setPasswordTouched(false);
+                  setNameTouched(false);
                 }}
                 className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider rounded-xl transition-all active:scale-95 cursor-pointer ${
                   isSignUp
@@ -412,17 +450,29 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                   <label className="text-gray-200 text-xs font-bold tracking-widest uppercase block">
                     Nome Completo
                   </label>
-                  <div className="flex items-center bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 focus-within:border-[#2DD4BF]/50 transition-all min-h-[48px]">
+                  <div className={`flex items-center bg-white/5 border rounded-2xl px-4 py-3.5 focus-within:border-[#2DD4BF]/50 transition-all min-h-[48px] ${
+                    nameTouched && getNameError() ? 'border-rose-500/50 focus-within:border-rose-500/70' : 'border-white/10'
+                  }`}>
                     <UserIcon className="text-gray-300 mr-2 shrink-0" size={18} />
                     <input
                       type="text"
                       required
+                      disabled={isSubmitting || isGoogleLoading}
                       placeholder="Seu nome"
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-sans"
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        setNameTouched(true);
+                      }}
+                      onBlur={() => setNameTouched(true)}
+                      className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-sans disabled:opacity-50"
                     />
                   </div>
+                  {nameTouched && getNameError() && (
+                    <p className="text-xs text-rose-400 font-mono mt-1 text-left animate-fade-in pl-1">
+                      • {getNameError()}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -431,19 +481,31 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 <label className="text-gray-200 text-xs font-bold tracking-widest uppercase block">
                   E-mail
                 </label>
-                <div className="flex items-center bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 focus-within:border-[#2DD4BF]/50 transition-all min-h-[48px]">
+                <div className={`flex items-center bg-white/5 border rounded-2xl px-4 py-3.5 focus-within:border-[#2DD4BF]/50 transition-all min-h-[48px] ${
+                  emailTouched && getEmailError() ? 'border-rose-500/50 focus-within:border-rose-500/70' : 'border-white/10'
+                }`}>
                   <Mail className="text-gray-300 mr-2 shrink-0" size={18} />
                   <input
                     type="email"
                     required
                     inputMode="email"
                     autoComplete="email"
+                    disabled={isSubmitting || isGoogleLoading}
                     placeholder={isSignUp ? "exemplo@email.com" : "renatobz@gmail.com"}
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-mono"
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setEmailTouched(true);
+                    }}
+                    onBlur={() => setEmailTouched(true)}
+                    className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-mono disabled:opacity-50"
                   />
                 </div>
+                {emailTouched && getEmailError() && (
+                  <p className="text-xs text-rose-400 font-mono mt-1 text-left animate-fade-in pl-1">
+                    • {getEmailError()}
+                  </p>
+                )}
               </div>
 
               {/* Password Input */}
@@ -451,24 +513,37 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 <label className="text-gray-200 text-xs font-bold tracking-widest uppercase block">
                   Senha
                 </label>
-                <div className="flex items-center bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 focus-within:border-[#2DD4BF]/50 transition-all min-h-[48px]">
+                <div className={`flex items-center bg-white/5 border rounded-2xl px-4 py-3.5 focus-within:border-[#2DD4BF]/50 transition-all min-h-[48px] ${
+                  passwordTouched && getPasswordError() ? 'border-rose-500/50 focus-within:border-rose-500/70' : 'border-white/10'
+                }`}>
                   <Lock className="text-gray-300 mr-2 shrink-0" size={18} />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    disabled={isSubmitting || isGoogleLoading}
                     placeholder={isSignUp ? "Crie sua senha (mín. 4 dgt)" : "Sua senha segura"}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-mono"
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setPasswordTouched(true);
+                    }}
+                    onBlur={() => setPasswordTouched(true)}
+                    className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-mono disabled:opacity-50"
                   />
                   <button
                     type="button"
+                    disabled={isSubmitting || isGoogleLoading}
                     onClick={() => setShowPassword(!showPassword)}
                     className="text-gray-300 hover:text-white transition cursor-pointer shrink-0 p-2.5 -mr-2 flex items-center justify-center min-w-[44px] min-h-[44px]"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                {passwordTouched && getPasswordError() && (
+                  <p className="text-xs text-rose-400 font-mono mt-1 text-left animate-fade-in pl-1">
+                    • {getPasswordError()}
+                  </p>
+                )}
               </div>
 
               {/* Esqueceu sua senha Link */}
@@ -476,6 +551,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 <div className="text-right">
                   <button
                     type="button"
+                    disabled={isSubmitting || isGoogleLoading}
                     onClick={() => {
                       setIsForgotPassword(true);
                       setForgotStep(1);
@@ -483,7 +559,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       setErrorMessage(null);
                       setSuccessMessage(null);
                     }}
-                    className="text-sm text-[#2DD4BF] hover:text-[#5eead4] hover:underline transition cursor-pointer font-semibold py-2 inline-block"
+                    className="text-sm text-[#2DD4BF] hover:text-[#5eead4] hover:underline transition cursor-pointer font-semibold py-2 inline-block disabled:opacity-50"
                   >
                     Esqueceu sua senha?
                   </button>
@@ -493,10 +569,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full mt-4 bg-[#2DD4BF] text-black py-4 rounded-2xl font-bold uppercase tracking-wider text-xs shadow-[0_0_25px_rgba(45,212,191,0.25)] hover:shadow-[0_0_35px_rgba(45,212,191,0.45)] hover:scale-[1.02] transition active:scale-95 cursor-pointer flex items-center justify-center space-x-2 min-h-[48px]"
+                disabled={isSubmitting || isGoogleLoading}
+                className="w-full mt-4 bg-[#2DD4BF] text-black py-4 rounded-2xl font-bold uppercase tracking-wider text-xs shadow-[0_0_25px_rgba(45,212,191,0.25)] hover:shadow-[0_0_35px_rgba(45,212,191,0.45)] hover:scale-[1.02] transition active:scale-95 cursor-pointer flex items-center justify-center space-x-2 min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>{isSignUp ? 'Cadastrar e Entrar' : 'Acessar Painel'}</span>
-                <ArrowRight size={14} />
+                {isSubmitting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-black/35 border-t-black rounded-full animate-spin mr-1" />
+                    <span>Conectando...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{isSignUp ? 'Cadastrar e Entrar' : 'Acessar Painel'}</span>
+                    <ArrowRight size={14} />
+                  </>
+                )}
               </button>
             </form>
           )}
@@ -515,7 +601,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             <button
               type="button"
               onClick={handleGoogleLogin}
-              disabled={isGoogleLoading}
+              disabled={isGoogleLoading || isSubmitting}
               className="w-full bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition-all rounded-2xl py-3.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 text-white min-h-[48px] cursor-pointer disabled:opacity-50"
             >
               {isGoogleLoading ? (

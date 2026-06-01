@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import TaskCenter from './components/TaskCenter';
 import AddTask from './components/AddTask';
 import Login from './components/Login';
+import ResetPassword from './components/ResetPassword';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { initAuth, googleSignIn, logoutGoogle, deleteGoogleCalendarEvent, db, handleFirestoreError, OperationType, cleanUndefined, auth } from './googleAuth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDocFromServer } from 'firebase/firestore';
@@ -44,6 +45,33 @@ export default function App() {
   const [googleToken, setGoogleToken] = useState<string | null>(() => {
     return localStorage.getItem('vall_google_token');
   });
+
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    
+    const originalPushState = window.history.pushState;
+    window.history.pushState = function(...args) {
+      originalPushState.apply(this, args);
+      handleLocationChange();
+    };
+    
+    const originalReplaceState = window.history.replaceState;
+    window.history.replaceState = function(...args) {
+      originalReplaceState.apply(this, args);
+      handleLocationChange();
+    };
+
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.history.pushState = originalPushState;
+      window.history.replaceState = originalReplaceState;
+    };
+  }, []);
 
   // Initial bootstrap: load tasks and sessions from localStorage as reliable local cache
   useEffect(() => {
@@ -396,6 +424,23 @@ export default function App() {
     return name.slice(0, 2).toUpperCase();
   };
 
+  if (currentPath === '/reset-password') {
+    return (
+      <div className="min-h-screen bg-[#030712] text-[#f8fafc] font-sans flex flex-col max-w-md mx-auto border-x border-white/5 shadow-2xl relative select-none overflow-hidden justify-center pb-12">
+        {toastMessage && (
+          <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 glass backdrop-blur-xl bg-black/40 text-xs px-4 py-3 rounded-full text-white shadow-xl flex items-center space-x-2 font-mono border-white/10" id="app_toast">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] animate-ping" />
+            <span className="text-gray-200">{toastMessage}</span>
+          </div>
+        )}
+        <ResetPassword onBackToLogin={() => {
+          window.history.pushState({}, '', '/');
+          setCurrentPath('/');
+        }} />
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#030712] text-[#f8fafc] font-sans flex flex-col max-w-md mx-auto border-x border-white/5 shadow-2xl relative select-none overflow-hidden">
@@ -506,14 +551,14 @@ export default function App() {
              setSelectedTaskForFocus(null);
            }}
            id="nav_btn_dashboard"
-           className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all cursor-pointer duration-100 ease-out active:scale-95 ${
+           className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer duration-100 ease-out active:scale-95 ${
              activeTab === 'dashboard'
                ? 'bg-[#2DD4BF] text-black shadow-[0_0_18px_rgba(45,212,191,0.45)] font-bold scale-105'
                : 'text-gray-300 hover:text-white hover:bg-white/10'
            }`}
            title="Painel Geral"
          >
-           <Grid size={24} />
+           <Grid size={20} />
          </button>
          
          {/* Calendário: Gerenciamento de tarefas */}
@@ -523,14 +568,14 @@ export default function App() {
              setSelectedTaskForFocus(null);
            }}
            id="nav_btn_tasks"
-           className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all cursor-pointer duration-100 ease-out active:scale-95 ${
+           className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer duration-100 ease-out active:scale-95 ${
              activeTab === 'tasks'
                ? 'bg-[#2DD4BF] text-black shadow-[0_0_18px_rgba(45,212,191,0.45)] font-bold scale-105'
                : 'text-gray-300 hover:text-white hover:bg-white/10'
            }`}
            title="Tarefas & Calendário"
          >
-           <Calendar size={24} />
+           <Calendar size={20} />
          </button>
 
          {/* PlusSquare: Criar Nova Tarefa */}
@@ -540,15 +585,17 @@ export default function App() {
              setSelectedTaskForFocus(null);
            }}
            id="nav_btn_add"
-           className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all cursor-pointer duration-100 ease-out active:scale-95 ${
+           className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer duration-100 ease-out active:scale-95 ${
              activeTab === 'add'
                ? 'bg-[#2DD4BF] text-black shadow-[0_0_18px_rgba(45,212,191,0.45)] font-bold scale-105'
                : 'text-gray-300 hover:text-white hover:bg-white/10'
            }`}
            title="Nova Tarefa"
          >
-           <PlusSquare size={24} />
+           <PlusSquare size={20} />
          </button>
+
+
       </nav>
 
     </div>
