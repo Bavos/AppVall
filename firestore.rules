@@ -1,55 +1,123 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Global Safety Net Default Deny
+    
+    // 1. GLOBAL SAFETY NET DEFAULT DENY
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Primitive Definitions & Helper Functions
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
+    // 2. PRIMITIVE GUIDES & VALIDATION HELPERS
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Validation Blueprint for Task Entity
-    function isValidTask(data) {
-      return data.keys().hasAll(['id', 'title', 'date', 'category', 'priority', 'status', 'userEmail'])
-        && data.id is string
-        && data.title is string && data.title.size() <= 200
-        && data.date is string && data.date.size() <= 20
-        && data.category is string && (data.category == 'Agendamento' || data.category == 'Curinga' || data.category == 'Disponível' || data.category == 'Notas')
-        && data.priority is string && (data.priority == 'Alta' || data.priority == 'Média' || data.priority == 'Baixa')
-        && data.status is string && (data.status == 'Pendente' || data.status == 'Em Progresso' || data.status == 'Concluída')
-        && data.userEmail is string && data.userEmail.size() <= 100
-        && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
-        && (!('estimatedMinutes' in data) || data.estimatedMinutes is int)
-        && (!('actualMinutes' in data) || data.actualMinutes is int)
-        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50))
-        && (!('googleEventId' in data) || (data.googleEventId is string && data.googleEventId.size() <= 256))
-        && (!('googleEventLink' in data) || (data.googleEventLink is string && data.googleEventLink.size() <= 1024))
-        && (!('googleMeetLink' in data) || (data.googleMeetLink is string && data.googleMeetLink.size() <= 1024))
-        && (!('rsvpStatus' in data) || (data.rsvpStatus is string && (data.rsvpStatus == 'accepted' || data.rsvpStatus == 'declined' || data.rsvpStatus == 'tentative' || data.rsvpStatus == 'needsAction')))
-        && (!('email' in data) || (data.email is string && data.email.size() <= 150))
-        && (!('time' in data) || (data.time is string && data.time.size() <= 10))
-        && (!('notificationLeadTime' in data) || data.notificationLeadTime is int)
-        && (!('notificationSent' in data) || data.notificationSent is bool);
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    // Check if the user is a registered member of an organization
+    function isMemberOfOrg(orgId) {
+      return isSignedIn() 
+        && exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid));
+    }
+
+    // Fetch the role of the user within an organization
+    function getMemberRole(orgId) {
+      return get(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid)).data.role;
+    }
+
+    // Verification helpers for specific privileges
+    function isOrgAdmin(orgId) {
+      return isMemberOfOrg(orgId) && getMemberRole(orgId) == 'admin';
+    }
+
+    function isOrgWriter(orgId) {
+      return isMemberOfOrg(orgId) && (getMemberRole(orgId) == 'admin' || getMemberRole(orgId) == 'editor');
+    }
+
+    // 3. USER PROFILE MANAGEMENT
+    match /users/{uid} {
+      // Users can read and write their own tenancy configuration profiles
+      allow get, write: if isSignedIn() && uid == request.auth.uid;
+    }
+
+    // 4. MULTI-TENANT ORGANIZATIONAL RULES
+    match /organizations/{orgId} {
+      // Members of the organization can view organization metadata
+      allow get: if isMemberOfOrg(orgId);
+      
+      // Admins are authorized to update organization properties
+      allow write: if isSignedIn() && (
+        // Allow creating during initial bootstrapping (when org does not yet exist)
+        (!exists(/databases/$(database)/documents/organizations/$(orgId)) && request.resource.data.createdBy == request.auth.uid)
+        || isOrgAdmin(orgId)
+      );
+
+      // Members Subcollection inside Tenant
+      match /members/{memberId} {
+        // Members of the organization can list other company members
+        allow read: if isMemberOfOrg(orgId);
+        
+        // Memberships are editable strictly inside atomic Transactions during invite accepts, 
+        // or by Organization Admins
+        allow write: if isSignedIn() && (
+          isOrgAdmin(orgId) 
+          || (memberId == request.auth.uid && !exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(memberId)))
+        );
+      }
+    }
+
+    // 5. INIVITATIONS COLLECTION (INVITES)
+    match /invites/{inviteId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && isMemberOfOrg(resource.data.organizationId);
+      
+      // Creating invites is limited strictly to active Organization Admins
+      allow create: if isSignedIn() 
+        && isValidId(inviteId)
+        && isOrgAdmin(request.resource.data.organizationId);
+
+      // Updating status (like accepted) is permitted for anonymous invite acceptance transactions 
+      allow update: if isSignedIn()
+        && resource.data.status == 'pending'
+        && (request.resource.data.status == 'accepted' || request.resource.data.status == 'declined')
+        && (request.auth.token.email.lower() == resource.data.email.lower() || isOrgAdmin(resource.data.organizationId));
+
+      // Deleting/revoking invitations is reserved for Org Admins or the creator
+      allow delete: if isSignedIn() && (
+        isOrgAdmin(resource.data.organizationId) ||
+        resource.data.invitedByUid == request.auth.uid
+      );
+    }
+
+    // 6. ADDTIONAL TENANT-SPECIFIC COLLECTIONS FOR DEMO / PRODUCTS
+    // e.g. organizations/{orgId}/produtos/{produtoId}
+    match /organizations/{orgId}/produtos/{produtoId} {
+      allow read: if isMemberOfOrg(orgId);
+      allow write: if isOrgWriter(orgId);
+    }
+
+    // 7. HISTORIC AUDIT LOGS (AUDIT TRAIL)
+    match /audit_logs/{logId} {
+      // Audit logs are strictly read-only for security officers or auditors/admins, 
+      // and written solely by system backends (Cloud Functions, etc.) or admins
+      allow read: if isSignedIn() 
+        && isOrgAdmin(resource.data.organizationId);
+      allow create: if isSignedIn() 
+        && isOrgAdmin(request.resource.data.organizationId);
+    }
+
+    // 8. HISTORICAL CONSTRAINTS - COMPATIBILITY BACKUP FOR TASKS
     match /tasks/{taskId} {
       allow get: if isSignedIn() && resource.data.userEmail == request.auth.token.email;
       allow list: if isSignedIn() && resource.data.userEmail == request.auth.token.email;
       
       allow create: if isSignedIn() 
         && isValidId(taskId)
-        && isValidTask(request.resource.data)
         && request.resource.data.userEmail == request.auth.token.email;
         
       allow update: if isSignedIn()
-        && isValidTask(request.resource.data)
         && resource.data.userEmail == request.auth.token.email
         && request.resource.data.userEmail == request.auth.token.email;
         

@@ -53,48 +53,149 @@
         "userEmail": {
           "type": "string",
           "description": "E-mail do usuário dono da tarefa"
-        },
-        "googleEventId": {
-          "type": "string",
-          "description": "ID do compromisso no Google Agenda se houver"
-        },
-        "googleEventLink": {
-          "type": "string",
-          "description": "Link público do evento no Google Agenda se houver"
-        },
-        "googleMeetLink": {
-          "type": "string",
-          "description": "Link da sala de reuniões do Google Meet se houver"
-        },
-        "rsvpStatus": {
-          "type": "string",
-          "enum": ["accepted", "declined", "tentative", "needsAction"],
-          "description": "Status respondido de convite RSVP"
-        },
-        "email": {
-          "type": "string",
-          "description": "E-mail de participante secundário ou convidado"
-        },
-        "time": {
-          "type": "string",
-          "description": "Horário no formato HH:MM"
-        },
-        "notificationLeadTime": {
-          "type": "integer",
-          "description": "Tempo antecedente de envio de notificação em minutos"
-        },
-        "notificationSent": {
-          "type": "boolean",
-          "description": "Marcador de notificação enviada"
         }
       },
       "required": ["id", "title", "date", "category", "priority", "status", "userEmail"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil de inquilino de cada usuário autenticado",
+      "type": "object",
+      "properties": {
+        "organizationId": {
+          "type": "string",
+          "description": "ID da organização ativa do usuário"
+        },
+        "email": {
+          "type": "string",
+          "description": "E-mail principal do usuário"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Nome de exibição do usuário"
+        }
+      },
+      "required": ["organizationId", "email"]
+    },
+    "Organization": {
+      "title": "Organization",
+      "description": "Ativo de representação multitenancy organizacional",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Nome fantasia da corporação/time"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "UID do criador administrador"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Data e hora de criação"
+        }
+      },
+      "required": ["name", "createdBy", "createdAt"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Perfil de membro específico de uma organização",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "UID do usuário correspondente"
+        },
+        "email": {
+          "type": "string",
+          "description": "E-mail do membro"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Nome de exibição do membro"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "editor", "viewer"],
+          "description": "Função em controle de acessos da hierarquia da empresa"
+        },
+        "joinedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Data e hora de ingresso"
+        }
+      },
+      "required": ["uid", "email", "role", "joinedAt"]
+    },
+    "Invite": {
+      "title": "Invite",
+      "description": "Metadados de envio de convites de equipes",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID único do convite"
+        },
+        "email": {
+          "type": "string",
+          "description": "E-mail do candidato convidado"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "editor", "viewer"],
+          "description": "Role que será herdada ao aceitar"
+        },
+        "organizationId": {
+          "type": "string",
+          "description": "ID da organização convidante"
+        },
+        "organizationName": {
+          "type": "string",
+          "description": "Nome descritivo da organização"
+        },
+        "invitedByUid": {
+          "type": "string",
+          "description": "UID do remetente"
+        },
+        "invitedByEmail": {
+          "type": "string",
+          "description": "E-mail do remetente"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "accepted", "declined"],
+          "description": "Status do convite"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Instante de envio"
+        }
+      },
+      "required": ["id", "email", "role", "organizationId", "organizationName", "invitedByUid", "status", "createdAt"]
     }
   },
   "firestore": {
     "tasks/{taskId}": {
       "schema": "Task",
       "description": "Coleção de tarefas do sistema vinculadas por e-mail de usuário"
+    },
+    "users/{uid}": {
+      "schema": "UserProfile",
+      "description": "Perfil global de vinculação de inquilino de cada usuário"
+    },
+    "organizations/{orgId}": {
+      "schema": "Organization",
+      "description": "Metadados de organizações autônomas"
+    },
+    "organizations/{orgId}/members/{memberId}": {
+      "schema": "Member",
+      "description": "Subcoleção contendo membros listados e validados por Tenant"
+    },
+    "invites/{inviteId}": {
+      "schema": "Invite",
+      "description": "Registros de convites para controle de admissão"
     }
   }
 }
