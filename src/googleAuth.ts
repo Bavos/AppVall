@@ -132,11 +132,6 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const logoutGoogle = async () => {
-  try {
-    await auth.signOut();
-  } catch (e) {
-    console.warn('Firebase signOut non-blocking warning:', e);
-  }
   cachedAccessToken = null;
   localStorage.removeItem('vall_google_token');
   localStorage.removeItem('vall_google_email');
@@ -260,9 +255,6 @@ export const createGoogleCalendarEvent = async (
         localStorage.removeItem('vall_google_token');
         localStorage.removeItem('vall_google_email');
         localStorage.removeItem('vall_google_name');
-        try {
-          auth.signOut();
-        } catch (_) {}
       }
       throw new Error(`Google Calendar API Error: ${response.status} - ${errText}`);
     }
@@ -300,9 +292,6 @@ export const getGoogleCalendarEventRSVP = async (
         localStorage.removeItem('vall_google_token');
         localStorage.removeItem('vall_google_email');
         localStorage.removeItem('vall_google_name');
-        try {
-          auth.signOut();
-        } catch (_) {}
       }
       console.warn(`Could not fetch RSVP for event ${eventId}: ${response.status} - ${errText}`);
       return null;
@@ -353,9 +342,6 @@ export const deleteGoogleCalendarEvent = async (
         localStorage.removeItem('vall_google_token');
         localStorage.removeItem('vall_google_email');
         localStorage.removeItem('vall_google_name');
-        try {
-          auth.signOut();
-        } catch (_) {}
       }
       console.warn(`Could not delete Google Calendar event ${eventId}: ${response.status} - ${errText}`);
       return false;

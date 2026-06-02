@@ -96,7 +96,7 @@ export default function AddTask({
         priority,
         status, // Pass custom status
         date,
-        time: time ? time : undefined,
+        time: category === 'Agendamento' && time ? time : undefined,
         estimatedMinutes,
         googleEventId,
         googleEventLink,
@@ -282,22 +282,24 @@ export default function AddTask({
           </>
         )}
 
-        {/* Hora */}
-        <div className="space-y-2">
-          <label className="text-gray-300 text-xs font-bold tracking-widest uppercase block">
-            Hora *
-          </label>
-          <div className="flex items-center bg-white/5 border border-white/10 rounded-2xl px-4 py-1.5 focus-within:border-[#2DD4BF]/50 min-h-[48px]">
-            <Clock className="text-gray-400 mr-2" size={18} />
-            <input
-              type="time"
-              required
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 cursor-pointer text-left py-2"
-            />
+        {/* Hora (somente para agendamento) */}
+        {category === 'Agendamento' && (
+          <div className="space-y-2">
+            <label className="text-gray-300 text-xs font-bold tracking-widest uppercase block">
+              Hora *
+            </label>
+            <div className="flex items-center bg-white/5 border border-white/10 rounded-2xl px-4 py-1.5 focus-within:border-[#2DD4BF]/50 min-h-[48px]">
+              <Clock className="text-gray-400 mr-2" size={18} />
+              <input
+                type="time"
+                required
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 cursor-pointer text-left py-2"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
 
 

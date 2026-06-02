@@ -276,7 +276,7 @@ export default function TaskCenter({
       estimatedMinutes: Number(editEstimated) || 25,
       email: editCategory === 'Agendamento' ? editEmail.trim() : undefined,
       status: editStatus,
-      time: editTime ? editTime : undefined
+      time: editCategory === 'Agendamento' && editTime ? editTime : undefined
     });
     setEditingTaskId(null);
   };
@@ -568,17 +568,19 @@ export default function TaskCenter({
                       </>
                     )}
 
-                    {/* Hora */}
-                    <div>
-                      <label className="text-xs text-gray-300 uppercase tracking-widest font-bold mb-1.5 block">Hora *</label>
-                      <input
-                        type="time"
-                        required
-                        value={editTime}
-                        onChange={(e) => setEditTime(e.target.value)}
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-[#2DD4BF] cursor-pointer min-h-[48px]"
-                      />
-                    </div>
+                    {/* Hora (somente para agendamento) */}
+                    {editCategory === 'Agendamento' && (
+                      <div>
+                        <label className="text-xs text-gray-300 uppercase tracking-widest font-bold mb-1.5 block">Hora *</label>
+                        <input
+                          type="time"
+                          required
+                          value={editTime}
+                          onChange={(e) => setEditTime(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-[#2DD4BF] cursor-pointer min-h-[48px]"
+                        />
+                      </div>
+                    )}
 
                     {/* Outros Ajustes (Prioridade) */}
                     <div className="grid grid-cols-2 gap-3">

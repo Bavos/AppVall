@@ -487,6 +487,22 @@ export default function App() {
             <div className="w-8 h-8 bg-[#2DD4BF] rounded-lg flex items-center justify-center font-black text-black text-lg italic select-none">V</div>
             <h1 className="text-3xl font-black italic tracking-tighter uppercase text-white select-none">Vall</h1>
           </div>
+          {googleToken ? (
+            <div className="flex items-center space-x-1 mt-2.5 bg-[#2DD4BF]/10 border border-[#2DD4BF]/20 rounded-full px-2.5 py-1 text-[9px] font-bold text-[#2DD4BF] w-fit">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] shrink-0 animate-ping" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] shrink-0 absolute" />
+              <span className="truncate max-w-[140px] font-mono">Agenda: {googleUser?.email || localStorage.getItem('vall_google_email') || 'Google'}</span>
+            </div>
+          ) : (
+            <button 
+              onClick={handleGoogleSignIn}
+              className="flex items-center space-x-1.5 mt-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-full px-2.5 py-1 text-[9px] font-bold text-amber-300 w-fit transition cursor-pointer active:scale-95"
+              title="Clique para sincronizar sua agenda agora em 1 segundo!"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="font-mono">Google Agenda (Desconectada)</span>
+            </button>
+          )}
         </div>
         <div className="flex space-x-3 mt-1">
           <div 
