@@ -221,13 +221,48 @@ export default function TaskCenter({
   const [editStatus, setEditStatus] = useState<TaskStatus>('Pendente');
   const [editTime, setEditTime] = useState('');
 
-  // Gera os 7 dias centrados no dia de hoje para o carrossel de datas dinamicamente
+  // Estado para armazenar o dia central do carrossel (padrão é o dia ativo, ex: hoje no primeiro load)
+  const [carouselCenterDate, setCarouselCenterDate] = useState<string>(activeDate || getTodayDateString());
+
+  // Sincroniza o centro do carrossel se a data ativa mudar externamente ou por clique
+  React.useEffect(() => {
+    if (activeDate) {
+      setCarouselCenterDate(activeDate);
+    }
+  }, [activeDate]);
+
+  // Função utilitária segura para deslocar datas
+  const shiftDate = (dateStr: string, daysToShift: number): string => {
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    d.setDate(d.getDate() + daysToShift);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handlePrevDay = () => {
+    const newDate = shiftDate(carouselCenterDate, -1);
+    setCarouselCenterDate(newDate);
+    setActiveDate(newDate);
+  };
+
+  const handleNextDay = () => {
+    const newDate = shiftDate(carouselCenterDate, 1);
+    setCarouselCenterDate(newDate);
+    setActiveDate(newDate);
+  };
+
+  // Gera os 7 dias centrados na data alvo (carouselCenterDate) dinamicamente
   const getCalendarDays = () => {
     const days = [];
-    // Usa o dia de hoje real
     const todayStr = getTodayDateString();
-    const parts = todayStr.split('-');
-    const baseDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    const parts = carouselCenterDate.split('-');
+    const baseDate = parts.length === 3 
+      ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      : new Date();
     
     for (let i = -3; i <= 3; i++) {
       const d = new Date(baseDate);
@@ -348,35 +383,58 @@ export default function TaskCenter({
         )}
       </section>
 
-      {/* CARROSSEL DE CALENDÁRIO SLIM INTERATIVO */}
-      <section className="px-0 relative overflow-x-auto whitespace-nowrap scrollbar-none py-1">
-        <div className="flex space-x-3 px-2">
-          {calendarDays.map((day) => {
-            const isSelected = day.dateStr === activeDate;
-            return (
-              <button
-                key={day.dateStr}
-                onClick={() => setActiveDate(day.dateStr)}
-                id={`calendar_day_${day.dateStr}`}
-                className={`w-[54px] h-[74px] rounded-2xl flex flex-col items-center justify-center transition-all duration-100 cursor-pointer active:scale-95 ${
-                  isSelected 
-                    ? 'bg-[#2DD4BF] text-black shadow-[0_0_18px_rgba(45,212,191,0.3)] font-extrabold scale-105' 
-                    : 'bg-white/5 text-gray-300 border border-white/5 hover:border-white/20 hover:text-white hover:bg-white/10'
-                }`}
-              >
-                <span className="text-[9px] uppercase tracking-wider font-mono opacity-80 mb-1">
-                  {day.dayName}
-                </span>
-                <span className="text-xl font-extrabold leading-none">
-                  {day.dayNum}
-                </span>
-                {day.isToday && !isSelected && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] mt-1.5" />
-                )}
-              </button>
-            );
-          })}
+      {/* CARROSSEL DE CALENDÁRIO SLIM INTERATIVO COM NAVEGAÇÃO DINÂMICA */}
+      <section className="px-2 flex items-center justify-between" id="dynamic_date_navigation_carousel">
+        {/* Seta para a esquerda */}
+        <button
+          onClick={handlePrevDay}
+          className="w-10 h-[74px] rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center text-[#2DD4BF] hover:bg-[#2DD4BF]/10 hover:border-[#2DD4BF]/30 transition active:scale-90 cursor-pointer text-sm font-bold shadow-[0_0_10px_rgba(45,212,191,0.05)]"
+          title="Dia Anterior"
+          aria-label="Dia Anterior"
+        >
+          ◀
+        </button>
+
+        {/* Carrossel de datas */}
+        <div className="flex-1 overflow-x-auto whitespace-nowrap scrollbar-none py-1 mx-2 flex justify-center">
+          <div className="flex space-x-2">
+            {calendarDays.map((day) => {
+              const isSelected = day.dateStr === activeDate;
+              return (
+                <button
+                  key={day.dateStr}
+                  onClick={() => setActiveDate(day.dateStr)}
+                  id={`calendar_day_${day.dateStr}`}
+                  className={`w-[44px] sm:w-[50px] md:w-[54px] h-[74px] rounded-2xl flex flex-col items-center justify-center transition-all duration-100 cursor-pointer active:scale-95 ${
+                    isSelected 
+                      ? 'bg-[#2DD4BF] text-black shadow-[0_0_18px_rgba(45,212,191,0.3)] font-extrabold scale-105' 
+                      : 'bg-white/5 text-gray-300 border border-white/5 hover:border-white/20 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <span className="text-[8px] sm:text-[9px] uppercase tracking-wider font-mono opacity-80 mb-1">
+                    {day.dayName}
+                  </span>
+                  <span className="text-lg sm:text-xl font-extrabold leading-none">
+                    {day.dayNum}
+                  </span>
+                  {day.isToday && !isSelected && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] mt-1.5 animate-pulse" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        {/* Seta para a direita */}
+        <button
+          onClick={handleNextDay}
+          className="w-10 h-[74px] rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center text-[#2DD4BF] hover:bg-[#2DD4BF]/10 hover:border-[#2DD4BF]/30 transition active:scale-90 cursor-pointer text-sm font-bold shadow-[0_0_10px_rgba(45,212,191,0.05)]"
+          title="Próximo Dia"
+          aria-label="Próximo Dia"
+        >
+          ▶
+        </button>
       </section>
 
       {/* BARRA DE PESQUISA E FILTROS */}
