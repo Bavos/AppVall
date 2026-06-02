@@ -10,6 +10,7 @@ interface DashboardProps {
   onAddTaskTab: () => void;
   onViewTasksTab: () => void;
   userName: string;
+  onTriggerToast?: (msg: string) => void;
 }
 
 export default function Dashboard({
@@ -18,7 +19,8 @@ export default function Dashboard({
   onToggleStatus,
   onAddTaskTab,
   onViewTasksTab,
-  userName
+  userName,
+  onTriggerToast
 }: DashboardProps) {
   const todayStr = getTodayDateString();
   const [showWeeklyCompromissos, setShowWeeklyCompromissos] = React.useState(false);

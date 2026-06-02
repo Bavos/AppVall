@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Grid, PlusSquare, LogOut, RefreshCw, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Calendar, Grid, PlusSquare, LogOut, RefreshCw, Sparkles, CheckCircle2, FileText, X } from 'lucide-react';
 import { Task, ViewTab, FocusSession, TaskStatus } from './types';
 import { DEFAULT_TASKS, getTodayDateString } from './utils';
 import Dashboard from './components/Dashboard';
 import TaskCenter from './components/TaskCenter';
 import AddTask from './components/AddTask';
+import RelatorioUI from './components/RelatorioUI';
 import Login from './components/Login';
 import ResetPassword from './components/ResetPassword';
 import { User, onAuthStateChanged } from 'firebase/auth';
@@ -31,6 +32,7 @@ export default function App() {
   const [activeDate, setActiveDate] = useState<string>(getTodayDateString()); // Data de referência iniciada conforme layout
   const [selectedTaskForFocus, setSelectedTaskForFocus] = useState<Task | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
   const [googleUser, setGoogleUser] = useState<any>(() => {
     const email = localStorage.getItem('vall_google_email');
@@ -532,6 +534,7 @@ export default function App() {
             onAddTaskTab={() => setActiveTab('add')}
             onViewTasksTab={() => setActiveTab('tasks')}
             userName={currentUser.name}
+            onTriggerToast={triggerToast}
           />
         )}
 
@@ -568,7 +571,7 @@ export default function App() {
 
       {/* 4. BARRA DE NAVEGAÇÃO INFERIOR ESTILIZADA (Bottom Nav) */}
       <nav 
-        className="glass p-2 m-4 rounded-[2rem] flex justify-between items-center fixed bottom-0 left-1/2 transform -translate-x-1/2 w-[calc(100%-2rem)] max-w-[calc(22rem-2rem)] z-30 shadow-2xl border border-white/20 select-none animate-fade-in"
+        className="glass p-2 m-4 rounded-[2rem] flex justify-between items-center fixed bottom-0 left-1/2 transform -translate-x-1/2 w-[calc(100%-2rem)] max-w-[calc(26rem-2rem)] z-30 shadow-2xl border border-white/20 select-none animate-fade-in"
         id="app_bottom_nav"
       >
          {/* Grid: Painel Geral/Dashboard */}
@@ -622,8 +625,61 @@ export default function App() {
            <PlusSquare size={20} />
          </button>
 
-
+         {/* FileText: Relatórios Tátegos */}
+         <button 
+           onClick={() => {
+             setIsReportOpen(true);
+           }}
+           id="nav_btn_report"
+           className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer duration-100 ease-out active:scale-95 ${
+             isReportOpen
+               ? 'bg-[#2DD4BF] text-black shadow-[0_0_18px_rgba(45,212,191,0.45)] font-bold scale-105'
+               : 'text-gray-300 hover:text-white hover:bg-white/10'
+           }`}
+           title="Relatórios e PDFs"
+         >
+           <FileText size={20} />
+         </button>
       </nav>
+
+      {/* MODAL DE RELATÓRIO TÁTICO */}
+      {isReportOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in" id="modal_relatorio">
+          <div className="bg-[#0b1528] border border-white/10 w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh]">
+            {/* Decorações estéticas brilhantes em espiral ambientais */}
+            <div className="absolute -top-12 -right-12 w-36 h-36 bg-[#2DD4BF]/10 rounded-full blur-3xl pointer-events-none" />
+            
+            {/* Cabeçalho do Modal */}
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/5 relative z-10">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#2DD4BF]/10 border border-[#2DD4BF]/20 flex items-center justify-center text-[#2DD4BF]">
+                  <FileText size={18} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm uppercase tracking-wider text-white">Relatórios</h3>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsReportOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-gray-400 hover:text-white transition active:scale-90 cursor-pointer"
+                title="Fechar relatório"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Conteúdo scrollable */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-4 relative z-10 scrollbar-none">
+              <RelatorioUI 
+                tasks={tasks} 
+                userName={currentUser.name} 
+                onTriggerToast={triggerToast} 
+                defaultOpen={true}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
