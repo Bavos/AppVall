@@ -22,8 +22,5 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  },
-  "exclude": [
-    "src/functions/**/*.ts"
-  ]
+  }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Grid, PlusSquare, LogOut, RefreshCw, Sparkles, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Calendar, Grid, PlusSquare, LogOut, RefreshCw, Sparkles, CheckCircle2 } from 'lucide-react';
 import { Task, ViewTab, FocusSession, TaskStatus } from './types';
 import { DEFAULT_TASKS, getTodayDateString } from './utils';
 import Dashboard from './components/Dashboard';
@@ -10,14 +10,8 @@ import ResetPassword from './components/ResetPassword';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { initAuth, googleSignIn, logoutGoogle, deleteGoogleCalendarEvent, db, handleFirestoreError, OperationType, cleanUndefined, auth } from './googleAuth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDocFromServer } from 'firebase/firestore';
-import { useTenant } from './context/TenantContext';
-import MemberManagement from './components/tenant/MemberManagement';
-import InviteRescue from './components/tenant/InviteRescue';
 
 export default function App() {
-  const { organizationId, createOrganization, role } = useTenant();
-  const [customPath, setCustomPath] = useState('/members');
-
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(() => {
     const saved = localStorage.getItem('vall_current_user');
     if (saved) {
@@ -520,6 +514,7 @@ export default function App() {
             activeDate={activeDate}
             onToggleStatus={handleToggleStatus}
             onAddTaskTab={() => setActiveTab('add')}
+            onViewTasksTab={() => setActiveTab('tasks')}
             userName={currentUser.name}
           />
         )}
@@ -551,82 +546,13 @@ export default function App() {
             onGoogleSignOut={handleGoogleSignOut}
           />
         )}
-
-        {activeTab === 'tenant' && (
-          <div className="space-y-6 pb-24 max-w-4xl mx-auto animate-fade-in relative z-15">
-            {!organizationId ? (
-              <div className="bg-neutral-900 border border-white/5 rounded-[2.5rem] p-8 max-w-md mx-auto space-y-6 text-center shadow-xl">
-                <div className="inline-flex items-center justify-center bg-[#2DD4BF]/10 w-16 h-16 rounded-[2rem] text-[#2DD4BF] border border-[#2DD4BF]/20">
-                  <Sparkles className="w-8 h-8 animate-pulse" />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-2xl font-black uppercase tracking-tight text-white leading-tight">Criar Organização SaaS</h3>
-                  <p className="text-gray-400 text-sm leading-relaxed">
-                    Você ainda não se vinculou a um Tenant. Crie sua Organização e assuma o controle total como Administrador.
-                  </p>
-                </div>
-                
-                <form 
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    const formData = new FormData(e.currentTarget);
-                    const name = String(formData.get('orgName') || '').trim();
-                    if (!name) return;
-                    try {
-                      await createOrganization(name);
-                      triggerToast(`Organização "${name}" criada com sucesso!`);
-                    } catch (err: any) {
-                      triggerToast('Erro ao criar organização.');
-                    }
-                  }}
-                  className="space-y-4"
-                >
-                  <input
-                    type="text"
-                    name="orgName"
-                    required
-                    placeholder="Nome da Organização (ex: Acmee Corp)"
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-[#2DD4BF] transition"
-                  />
-                  <button
-                    type="submit"
-                    className="w-full bg-[#2DD4BF] hover:bg-[#20bda8] text-black font-extrabold text-sm py-4 rounded-2xl transition active:scale-95 cursor-pointer"
-                  >
-                    Bootstrap Organização
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Visual simulator for invite redemption vs member list */}
-                <div className="flex bg-neutral-950/40 p-1.5 border border-white/5 rounded-2xl gap-2 font-mono">
-                  <button
-                    onClick={() => setCustomPath('/members')}
-                    className={`flex-1 py-3 px-2 rounded-xl text-[10px] font-bold transition uppercase tracking-wider ${
-                      customPath === '/members' ? 'bg-[#2DD4BF] text-black shadow-md' : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    Membros & Permissões
-                  </button>
-                  <button
-                    onClick={() => setCustomPath('/rescue')}
-                    className={`flex-1 py-3 px-2 rounded-xl text-[10px] font-bold transition uppercase tracking-wider ${
-                      customPath === '/rescue' ? 'bg-[#2DD4BF] text-black shadow-md' : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    Simular Convite
-                  </button>
-                </div>
-                {customPath === '/members' ? <MemberManagement /> : <InviteRescue />}
-              </div>
-            )}
-          </div>
-        )}
       </main>
+
+
 
       {/* 4. BARRA DE NAVEGAÇÃO INFERIOR ESTILIZADA (Bottom Nav) */}
       <nav 
-        className="glass p-2 m-4 rounded-[2rem] flex justify-between items-center fixed bottom-0 left-1/2 transform -translate-x-1/2 w-[calc(100%-2rem)] max-w-[calc(26rem-2rem)] z-30 shadow-2xl border border-white/20 select-none animate-fade-in"
+        className="glass p-2 m-4 rounded-[2rem] flex justify-between items-center fixed bottom-0 left-1/2 transform -translate-x-1/2 w-[calc(100%-2rem)] max-w-[calc(22rem-2rem)] z-30 shadow-2xl border border-white/20 select-none animate-fade-in"
         id="app_bottom_nav"
       >
          {/* Grid: Painel Geral/Dashboard */}
@@ -678,23 +604,6 @@ export default function App() {
            title="Nova Tarefa"
          >
            <PlusSquare size={20} />
-         </button>
-
-         {/* ShieldCheck: SaaS Tenant Portal */}
-         <button 
-           onClick={() => {
-             setActiveTab('tenant');
-             setSelectedTaskForFocus(null);
-           }}
-           id="nav_btn_tenant"
-           className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer duration-100 ease-out active:scale-95 ${
-             activeTab === 'tenant'
-               ? 'bg-[#2DD4BF] text-black shadow-[0_0_18px_rgba(45,212,191,0.45)] font-bold scale-105'
-               : 'text-gray-300 hover:text-white hover:bg-white/10'
-           }`}
-           title="SaaS Cooperativo"
-         >
-           <ShieldCheck size={20} />
          </button>
 
 

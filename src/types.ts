@@ -32,4 +32,4 @@ export interface FocusSession {
   timestamp: string;
 }
 
-export type ViewTab = 'dashboard' | 'tasks' | 'add' | 'tenant';
+export type ViewTab = 'dashboard' | 'tasks' | 'add';
