@@ -11,6 +11,10 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidEmailId(email) {
+      return email is string && email.size() <= 150 && email.matches('^[a-zA-Z0-9_.\\-@]+$');
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -25,6 +29,7 @@ service cloud.firestore {
         && data.priority is string && (data.priority == 'Alta' || data.priority == 'Média' || data.priority == 'Baixa')
         && data.status is string && (data.status == 'Pendente' || data.status == 'Em Progresso' || data.status == 'Concluída')
         && data.userEmail is string && data.userEmail.size() <= 100
+        && (!('adminEmail' in data) || (data.adminEmail is string && data.adminEmail.size() <= 150))
         && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
         && (!('estimatedMinutes' in data) || data.estimatedMinutes is int)
         && (!('actualMinutes' in data) || data.actualMinutes is int)
@@ -39,22 +44,125 @@ service cloud.firestore {
         && (!('notificationSent' in data) || data.notificationSent is bool);
     }
 
+    // Validation Blueprint for UserProfile Entity
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['email', 'name', 'role', 'adminEmail', 'createdAt'])
+        && (data.keys().size() == 5 || (data.keys().size() == 6 && 'password' in data))
+        && data.email is string && data.email.size() <= 150
+        && data.name is string && data.name.size() <= 150
+        && data.role is string && (data.role == 'admin' || data.role == 'member')
+        && data.adminEmail is string && data.adminEmail.size() <= 150
+        && data.createdAt is string && data.createdAt.size() <= 50
+        && (!('password' in data) || (data.password is string && data.password.size() <= 100));
+    }
+
+    // Task collection
     match /tasks/{taskId} {
-      allow get: if isSignedIn() && resource.data.userEmail == request.auth.token.email;
-      allow list: if isSignedIn() && resource.data.userEmail == request.auth.token.email;
+      allow get, list: if isSignedIn() 
+        && (
+          resource.data.userEmail == request.auth.token.email.lower()
+          || (
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+          )
+        );
       
       allow create: if isSignedIn() 
         && isValidId(taskId)
         && isValidTask(request.resource.data)
-        && request.resource.data.userEmail == request.auth.token.email;
+        && (
+          request.resource.data.userEmail == request.auth.token.email.lower()
+          || (
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            && request.resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+          )
+        );
         
       allow update: if isSignedIn()
         && isValidTask(request.resource.data)
-        && resource.data.userEmail == request.auth.token.email
-        && request.resource.data.userEmail == request.auth.token.email;
+        && (
+          (
+            resource.data.userEmail == request.auth.token.email.lower()
+            && request.resource.data.userEmail == request.auth.token.email.lower()
+          )
+          || (
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+            && request.resource.data.adminEmail == resource.data.adminEmail
+          )
+        );
         
       allow delete: if isSignedIn()
-        && resource.data.userEmail == request.auth.token.email;
+        && (
+          resource.data.userEmail == request.auth.token.email.lower()
+          || (
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+          )
+        );
+    }
+
+    // User profiles collection
+    match /user_profiles/{email} {
+      allow get: if isSignedIn()
+        && (
+          email == request.auth.token.email.lower()
+          || (
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            && exists(/databases/$(database)/documents/user_profiles/$(email))
+            && get(/databases/$(database)/documents/user_profiles/$(email)).data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+          )
+        );
+
+      allow list: if isSignedIn()
+        && (
+          email == request.auth.token.email.lower()
+          || (
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+          )
+        );
+
+      allow create: if isSignedIn()
+        && isValidEmailId(email)
+        && isValidUserProfile(request.resource.data)
+        && (
+          // Creating own profile as admin
+          (email == request.auth.token.email.lower() && request.resource.data.role == 'admin')
+          // Or registered as member by group's admin
+          || (
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.role == 'admin'
+            && request.resource.data.role == 'member'
+            && request.resource.data.adminEmail == request.auth.token.email.lower()
+          )
+        );
+
+      allow update: if isSignedIn()
+        && isValidUserProfile(request.resource.data)
+        && (
+          // Personal update (e.g. password or name change)
+          (email == request.auth.token.email.lower() && request.resource.data.role == resource.data.role && request.resource.data.adminEmail == resource.data.adminEmail)
+          // Or updated by admin
+          || (
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.role == 'admin'
+            && resource.data.adminEmail == request.auth.token.email.lower()
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.adminEmail == resource.data.adminEmail
+          )
+        );
+
+      allow delete: if isSignedIn()
+        && (
+          // Admin deleting a member of their team
+          (
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.role == 'admin'
+            && resource.data.adminEmail == request.auth.token.email.lower()
+            && email != request.auth.token.email.lower()
+          )
+        );
     }
   }
 }

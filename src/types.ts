@@ -14,6 +14,7 @@ export interface Task {
   actualMinutes: number;
   createdAt: string;
   userEmail?: string;
+  adminEmail?: string;
   googleEventId?: string;
   googleEventLink?: string;
   googleMeetLink?: string;
@@ -32,4 +33,4 @@ export interface FocusSession {
   timestamp: string;
 }
 
-export type ViewTab = 'dashboard' | 'tasks' | 'add';
+export type ViewTab = 'dashboard' | 'tasks' | 'add' | 'gerenciamento';

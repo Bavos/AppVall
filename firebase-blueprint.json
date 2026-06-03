@@ -54,6 +54,10 @@
           "type": "string",
           "description": "E-mail do usuário dono da tarefa"
         },
+        "adminEmail": {
+          "type": "string",
+          "description": "E-mail do administrador compartilhador da agenda coletiva"
+        },
         "googleEventId": {
           "type": "string",
           "description": "ID do compromisso no Google Agenda se houver"
@@ -88,13 +92,51 @@
           "description": "Marcador de notificação enviada"
         }
       },
-      "required": ["id", "title", "date", "category", "priority", "status", "userEmail"]
+      "required": ["id", "title", "date", "category", "priority", "status"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil de trabalho e direitos de acesso dos participantes do Vall",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "E-mail unívoco do participante"
+        },
+        "name": {
+          "type": "string",
+          "description": "Nome completo"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "member"],
+          "description": "Nível de acesso na equipe"
+        },
+        "adminEmail": {
+          "type": "string",
+          "description": "E-mail do administrador responsável por este grupo"
+        },
+        "password": {
+          "type": "string",
+          "description": "Representação de credencial secundária para logins corporativos rápidos"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Data de cadastro do participante"
+        }
+      },
+      "required": ["email", "name", "role", "adminEmail", "createdAt"]
     }
   },
   "firestore": {
     "tasks/{taskId}": {
       "schema": "Task",
-      "description": "Coleção de tarefas do sistema vinculadas por e-mail de usuário"
+      "description": "Coleção de tarefas compartilhadas por agenda coletiva (adminEmail)"
+    },
+    "user_profiles/{email}": {
+      "schema": "UserProfile",
+      "description": "Coleção de perfis de usuário, papéis e grupos de trabalho"
     }
   }
 }

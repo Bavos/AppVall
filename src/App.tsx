@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Grid, PlusSquare, LogOut, RefreshCw, Sparkles, CheckCircle2, FileText, X } from 'lucide-react';
+import { Calendar, Grid, PlusSquare, LogOut, RefreshCw, Sparkles, CheckCircle2, FileText, X, Users } from 'lucide-react';
 import { Task, ViewTab, FocusSession, TaskStatus } from './types';
 import { DEFAULT_TASKS, getTodayDateString } from './utils';
 import Dashboard from './components/Dashboard';
 import TaskCenter from './components/TaskCenter';
 import AddTask from './components/AddTask';
 import RelatorioUI from './components/RelatorioUI';
+import Gerenciamento from './components/Gerenciamento';
 import Login from './components/Login';
 import ResetPassword from './components/ResetPassword';
 import { User, onAuthStateChanged } from 'firebase/auth';
@@ -26,6 +27,24 @@ export default function App() {
   });
 
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<{
+    email: string;
+    name: string;
+    role: 'admin' | 'member';
+    adminEmail: string;
+    password?: string;
+    createdAt: string;
+  } | null>(() => {
+    const saved = localStorage.getItem('vall_user_profile');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
   const [tasks, setTasks] = useState<Task[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [activeTab, setActiveTab] = useState<ViewTab>('dashboard');
@@ -145,6 +164,73 @@ export default function App() {
     }
   }, [tasks, currentUser]);
 
+  // Sync user profiles in real-time from Firestore when authenticated
+  useEffect(() => {
+    if (!firebaseUser || !firebaseUser.email) {
+      // Load fallback profile if logged in locally so current profile isn't wiped out
+      const saved = localStorage.getItem('vall_user_profile');
+      if (saved) {
+        try {
+          setUserProfile(JSON.parse(saved));
+        } catch (e) {
+          setUserProfile(null);
+        }
+      } else {
+        setUserProfile(null);
+      }
+      return;
+    }
+
+    const emailLower = firebaseUser.email.toLowerCase();
+    const profileRef = doc(db, 'user_profiles', emailLower);
+    
+    const unsubscribe = onSnapshot(profileRef, async (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const prof = {
+          email: data.email,
+          name: data.name,
+          role: data.role as 'admin' | 'member',
+          adminEmail: data.adminEmail,
+          password: data.password,
+          createdAt: data.createdAt
+        };
+        setUserProfile(prof);
+        localStorage.setItem('vall_user_profile', JSON.stringify(prof));
+      } else {
+        // If profile does not exist yet (Google signin, legacy login, or new unprofiled admin), auto provision
+        try {
+          const newProfile = {
+            email: emailLower,
+            name: firebaseUser.displayName || 'Administrador',
+            role: 'admin' as const,
+            adminEmail: emailLower,
+            createdAt: new Date().toISOString()
+          };
+          await setDoc(profileRef, newProfile);
+          setUserProfile(newProfile);
+          localStorage.setItem('vall_user_profile', JSON.stringify(newProfile));
+        } catch (err) {
+          console.error('Falha ao auto-provisionar perfil do usuário:', err);
+          // Auto provision fallback locally
+          const localProfile = {
+            email: emailLower,
+            name: firebaseUser.displayName || 'Administrador',
+            role: 'admin' as const,
+            adminEmail: emailLower,
+            createdAt: new Date().toISOString()
+          };
+          setUserProfile(localProfile);
+          localStorage.setItem('vall_user_profile', JSON.stringify(localProfile));
+        }
+      }
+    }, (error) => {
+      console.error('Erro ao ler perfil do Firestore:', error);
+    });
+
+    return () => unsubscribe();
+  }, [firebaseUser]);
+
   // Sync tasks in real-time from Firestore when currentUser and authenticated firebaseUser are present
   useEffect(() => {
     if (!currentUser) {
@@ -160,7 +246,10 @@ export default function App() {
 
     const emailToFilter = currentUser.email.toLowerCase();
     const tasksCollectionRef = collection(db, 'tasks');
-    const q = query(tasksCollectionRef, where('userEmail', '==', emailToFilter));
+    
+    // Choose collective group if profile is present, otherwise fallback to userEmail
+    const adminEmailToFilter = userProfile?.adminEmail ? userProfile.adminEmail.toLowerCase() : emailToFilter;
+    const q = query(tasksCollectionRef, where('adminEmail', '==', adminEmailToFilter));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const fetchedTasks: Task[] = [];
@@ -168,35 +257,56 @@ export default function App() {
         fetchedTasks.push(docSnap.data() as Task);
       });
 
-      // Seeding: if empty collection, auto-seed with customized DEFAULT_TASKS for excellent UX
+      // Seeding: if empty collection AND we are not a member (only admins or solo users can seed)
       if (snapshot.empty) {
-        for (let i = 0; i < DEFAULT_TASKS.length; i++) {
-          const t = DEFAULT_TASKS[i];
-          const taskId = `task-${Date.now()}-${i}`;
-          const seeded: Task = {
-            ...t,
-            id: taskId,
-            userEmail: emailToFilter,
-            createdAt: new Date().toISOString()
-          };
-          try {
-            await setDoc(doc(db, 'tasks', taskId), cleanUndefined(seeded));
-          } catch (e) {
-            console.error('Falha ao semear tarefa padrão:', e);
+        const canSeed = !userProfile || userProfile.role === 'admin';
+        if (canSeed) {
+          for (let i = 0; i < DEFAULT_TASKS.length; i++) {
+            const t = DEFAULT_TASKS[i];
+            const taskId = `task-${Date.now()}-${i}`;
+            const seeded: Task = {
+              ...t,
+              id: taskId,
+              userEmail: emailToFilter,
+              createdAt: new Date().toISOString(),
+              adminEmail: adminEmailToFilter
+            };
+            try {
+              await setDoc(doc(db, 'tasks', taskId), cleanUndefined(seeded));
+            } catch (e) {
+              console.error('Falha ao semear tarefa padrão:', e);
+            }
+          }
+          return;
+        }
+      }
+
+      // Self-healing migration for legacy database entries lacking adminEmail
+      if (userProfile?.adminEmail) {
+        for (const ft of fetchedTasks) {
+          if (!ft.adminEmail) {
+            try {
+              await setDoc(doc(db, 'tasks', ft.id), {
+                ...ft,
+                adminEmail: userProfile.adminEmail.toLowerCase()
+              });
+            } catch (err) {
+              console.warn('Silent legacy task migration failed:', err);
+            }
           }
         }
-        return;
       }
 
       // Ordena por data de criação de forma decrescente
       fetchedTasks.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
       setTasks(fetchedTasks);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'tasks');
+      // If of query fails, try fallback userEmail query or print helpful diagnostic
+      console.warn('Real-time task synchronization for shared adminEmail failed. Retrying fallback query.', error);
     });
 
     return () => unsubscribe();
-  }, [currentUser, firebaseUser]);
+  }, [currentUser, firebaseUser, userProfile]);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -317,21 +427,26 @@ export default function App() {
 
   // Atualizar dados de uma tarefa existente
   const handleUpdateTask = async (updatedTask: Task, isSilent: boolean = false) => {
+    let finalTask = { ...updatedTask };
+    if (userProfile && !finalTask.adminEmail) {
+      finalTask.adminEmail = userProfile.adminEmail.toLowerCase();
+    }
+
     if (firebaseUser && firebaseUser.uid) {
       try {
-        await setDoc(doc(db, 'tasks', updatedTask.id), cleanUndefined(updatedTask));
+        await setDoc(doc(db, 'tasks', finalTask.id), cleanUndefined(finalTask));
         if (!isSilent) {
           triggerToast('Alterações gravadas com sucesso');
         }
       } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `tasks/${updatedTask.id}`);
+        handleFirestoreError(error, OperationType.WRITE, `tasks/${finalTask.id}`);
         if (!isSilent) {
           triggerToast('Erro ao gravar alterações no banco.');
         }
       }
     } else {
       setTasks((prevTasks) => {
-        const updated = prevTasks.map((t) => (t.id === updatedTask.id ? updatedTask : t));
+        const updated = prevTasks.map((t) => (t.id === finalTask.id ? finalTask : t));
         localStorage.setItem('vall_tasks', JSON.stringify(updated));
         return updated;
       });
@@ -350,7 +465,8 @@ export default function App() {
       status: newTaskData.status || 'Pendente',
       actualMinutes: 0,
       createdAt: new Date().toISOString(),
-      userEmail: currentUser?.email.toLowerCase() || 'renatobz@gmail.com'
+      userEmail: currentUser?.email.toLowerCase() || 'renatobz@gmail.com',
+      adminEmail: userProfile?.adminEmail ? userProfile.adminEmail.toLowerCase() : (currentUser?.email.toLowerCase() || 'renatobz@gmail.com')
     };
 
     if (firebaseUser && firebaseUser.uid) {
@@ -565,6 +681,37 @@ export default function App() {
             onGoogleSignOut={handleGoogleSignOut}
           />
         )}
+
+        {activeTab === 'gerenciamento' && (
+          <Gerenciamento
+            currentUser={currentUser}
+            userProfile={userProfile}
+            onTriggerToast={triggerToast}
+            onDefineAdmin={async () => {
+              if (!currentUser) return;
+              const newAdminProfile = {
+                email: currentUser.email.toLowerCase(),
+                name: currentUser.name,
+                role: 'admin' as const,
+                adminEmail: currentUser.email.toLowerCase(),
+                createdAt: new Date().toISOString()
+              };
+
+              // Apply locally immediately so the UI responds instantly
+              setUserProfile(newAdminProfile);
+              localStorage.setItem('vall_user_profile', JSON.stringify(newAdminProfile));
+              triggerToast('Perfil estabelecido como Administrador!');
+
+              // Sincroniza em background com o Firestore se houver sessão ativa
+              try {
+                const profileRef = doc(db, 'user_profiles', currentUser.email.toLowerCase());
+                await setDoc(profileRef, newAdminProfile);
+              } catch (err) {
+                console.warn('Silent offline sync for admin activation:', err);
+              }
+            }}
+          />
+        )}
       </main>
 
 
@@ -640,6 +787,23 @@ export default function App() {
          >
            <FileText size={20} />
          </button>
+          {/* Users: Gerenciamento */}
+          <button 
+            onClick={() => {
+              setActiveTab('gerenciamento');
+              setIsReportOpen(false);
+              setSelectedTaskForFocus(null);
+            }}
+            id="nav_btn_gerenciamento"
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer duration-100 ease-out active:scale-95 ${
+              activeTab === 'gerenciamento'
+                ? 'bg-[#2DD4BF] text-black shadow-[0_0_18px_rgba(45,212,191,0.45)] font-bold scale-105'
+                : 'text-gray-300 hover:text-white hover:bg-white/10'
+            }`}
+            title="Gerenciamento de Equipe"
+          >
+            <Users size={20} />
+          </button>
       </nav>
 
       {/* MODAL DE RELATÓRIO TÁTICO */}

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, Sparkles, User as UserIcon, ArrowRight } from 'lucide-react';
-import { googleSignIn, auth } from '../googleAuth';
+import { Mail, Lock, Eye, EyeOff, Sparkles, User as UserIcon, ArrowRight, ShieldCheck } from 'lucide-react';
+import { googleSignIn, auth, db } from '../googleAuth';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface LoginProps {
   onLoginSuccess: (user: { name: string; email: string }) => void;
@@ -9,6 +10,7 @@ interface LoginProps {
 
 export default function Login({ onLoginSuccess }: LoginProps) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [registerAsAdmin, setRegisterAsAdmin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -73,6 +75,19 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         const credential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(credential.user, { displayName: name });
         
+        // Save profile to Firestore
+        try {
+          await setDoc(doc(db, 'user_profiles', email.toLowerCase()), {
+            email: email.toLowerCase(),
+            name: name,
+            role: registerAsAdmin ? 'admin' : 'member',
+            adminEmail: email.toLowerCase(),
+            createdAt: new Date().toISOString()
+          });
+        } catch (pfErr) {
+          console.error('Erro ao salvar profile no Firestore:', pfErr);
+        }
+        
         // Also save to local user simulation for backward compatibility and fallback
         const usersJson = localStorage.getItem('vall_users');
         let users = usersJson ? JSON.parse(usersJson) : {};
@@ -83,6 +98,25 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       } else {
         // Sign In with Firebase Auth
         const credential = await signInWithEmailAndPassword(auth, email, password);
+        
+        // Ensure user_profiles has a document for them so things synchronize correctly
+        try {
+          const profileDocRef = doc(db, 'user_profiles', email.toLowerCase());
+          const profSnap = await getDoc(profileDocRef);
+          if (!profSnap.exists()) {
+            // Auto define old/unprofiled users or renatobz as admin
+            await setDoc(profileDocRef, {
+              email: email.toLowerCase(),
+              name: credential.user.displayName || 'Renato Zarvos',
+              role: 'admin',
+              adminEmail: email.toLowerCase(),
+              createdAt: new Date().toISOString()
+            });
+          }
+        } catch (profE) {
+          console.warn('Silent user profile check/upgrade skipped:', profE);
+        }
+
         onLoginSuccess({ name: credential.user.displayName || 'Renato Zarvos', email });
 
         // Save simulated user details
@@ -104,6 +138,27 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
       // If sign-in failed (for example, user not found, or password invalid)
       if (!isSignUp && (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential')) {
+        // Core fallback: search in firestore user_profiles for team members created by Admin
+        try {
+          const uProfileDoc = await getDoc(doc(db, 'user_profiles', email.toLowerCase()));
+          if (uProfileDoc.exists()) {
+            const up = uProfileDoc.data();
+            if (up.password === password) {
+              // Lazy recreate Firebase Auth credentials in background so it registers correctly next time!
+              try {
+                const subCred = await createUserWithEmailAndPassword(auth, email, password);
+                await updateProfile(subCred.user, { displayName: up.name });
+              } catch (regE) {
+                console.warn('Auto Firebase user background registration skipped or already existing:', regE);
+              }
+              onLoginSuccess({ name: up.name, email: email.toLowerCase() });
+              return;
+            }
+          }
+        } catch (dbErr) {
+          console.error('Firestore fallback user profile query failed:', dbErr);
+        }
+
         // Let's check our local storage fallback
         const usersJson = localStorage.getItem('vall_users');
         let users = usersJson ? JSON.parse(usersJson) : {};
@@ -446,34 +501,51 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
               {/* Custom full Name Input - Register Mode */}
               {isSignUp && (
-                <div className="space-y-1.5">
-                  <label className="text-gray-200 text-xs font-bold tracking-widest uppercase block">
-                    Nome Completo
-                  </label>
-                  <div className={`flex items-center bg-white/5 border rounded-2xl px-4 py-3.5 focus-within:border-[#2DD4BF]/50 transition-all min-h-[48px] ${
-                    nameTouched && getNameError() ? 'border-rose-500/50 focus-within:border-rose-500/70' : 'border-white/10'
-                  }`}>
-                    <UserIcon className="text-gray-300 mr-2 shrink-0" size={18} />
-                    <input
-                      type="text"
-                      required
-                      disabled={isSubmitting || isGoogleLoading}
-                      placeholder="Seu nome"
-                      value={name}
-                      onChange={(e) => {
-                        setName(e.target.value);
-                        setNameTouched(true);
-                      }}
-                      onBlur={() => setNameTouched(true)}
-                      className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-sans disabled:opacity-50"
-                    />
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-gray-200 text-xs font-bold tracking-widest uppercase block">
+                      Nome Completo
+                    </label>
+                    <div className={`flex items-center bg-white/5 border rounded-2xl px-4 py-3.5 focus-within:border-[#2DD4BF]/50 transition-all min-h-[48px] ${
+                      nameTouched && getNameError() ? 'border-rose-500/50 focus-within:border-rose-500/70' : 'border-white/10'
+                    }`}>
+                      <UserIcon className="text-gray-300 mr-2 shrink-0" size={18} />
+                      <input
+                        type="text"
+                        required
+                        disabled={isSubmitting || isGoogleLoading}
+                        placeholder="Seu nome"
+                        value={name}
+                        onChange={(e) => {
+                          setName(e.target.value);
+                          setNameTouched(true);
+                        }}
+                        onBlur={() => setNameTouched(true)}
+                        className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-sans disabled:opacity-50"
+                      />
+                    </div>
+                    {nameTouched && getNameError() && (
+                      <p className="text-xs text-rose-400 font-mono mt-1 text-left animate-fade-in pl-1">
+                        • {getNameError()}
+                      </p>
+                    )}
                   </div>
-                  {nameTouched && getNameError() && (
-                    <p className="text-xs text-rose-400 font-mono mt-1 text-left animate-fade-in pl-1">
-                      • {getNameError()}
-                    </p>
-                  )}
-                </div>
+
+                  {/* Register as Administrator Toggle */}
+                  <div className="flex items-center space-x-3 p-3.5 bg-white/5 border border-white/5 rounded-2xl select-none">
+                    <input
+                      type="checkbox"
+                      id="register_as_admin"
+                      checked={registerAsAdmin}
+                      onChange={(e) => setRegisterAsAdmin(e.target.checked)}
+                      className="w-4 h-4 rounded border-white/20 bg-transparent text-[#2DD4BF] focus:ring-[#2DD4BF] focus:ring-offset-0 cursor-pointer"
+                    />
+                    <label htmlFor="register_as_admin" className="text-[11px] text-gray-200 leading-tight cursor-pointer">
+                      <strong className="text-white">Cadastrar como Administrador</strong>
+                      <span className="block text-[9px] text-gray-400 mt-0.5">Permite herdar painel e gerenciar equipe coletiva de até 4 pessoas.</span>
+                    </label>
+                  </div>
+                </>
               )}
 
               {/* Email Address Input */}
