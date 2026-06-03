@@ -72,8 +72,23 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     try {
       if (isSignUp) {
         // Sign Up with Firebase Auth
-        const credential = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(credential.user, { displayName: name });
+        let credential;
+        try {
+          credential = await createUserWithEmailAndPassword(auth, email, password);
+          await updateProfile(credential.user, { displayName: name });
+        } catch (signUpErr: any) {
+          if (signUpErr.code === 'auth/email-already-in-use') {
+            console.log('E-mail already exists in Firebase Auth. Attempting sign-in fallback instead...');
+            try {
+              credential = await signInWithEmailAndPassword(auth, email, password);
+            } catch (signInErr) {
+              console.error('Sign-in fallback failed:', signInErr);
+              throw signUpErr; // Throw original signUpErr if password is wrong
+            }
+          } else {
+            throw signUpErr;
+          }
+        }
         
         // Save profile to Firestore
         try {
@@ -93,6 +108,24 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         let users = usersJson ? JSON.parse(usersJson) : {};
         users[email.toLowerCase()] = { name, password };
         localStorage.setItem('vall_users', JSON.stringify(users));
+
+        // Trigger backend registration workflow (Ação 1 DB sync, Ação 2 Admin email, Ação 3 User email)
+        try {
+          await fetch('/api/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name,
+              email: email.toLowerCase(),
+              role: registerAsAdmin ? 'admin' : 'member',
+              adminEmail: email.toLowerCase()
+            })
+          });
+        } catch (apiErr) {
+          console.error('Erro ao processar fluxo extra de registro no backend:', apiErr);
+        }
 
         onLoginSuccess({ name, email });
       } else {

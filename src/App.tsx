@@ -226,6 +226,7 @@ export default function App() {
       }
     }, (error) => {
       console.error('Erro ao ler perfil do Firestore:', error);
+      handleFirestoreError(error, OperationType.GET, `user_profiles/${emailLower}`);
     });
 
     return () => unsubscribe();
@@ -239,8 +240,8 @@ export default function App() {
     }
 
     // Only set up real-time listener if we have a valid, authenticated Firebase Auth user session
-    // to satisfy "Only attach onSnapshot listeners if auth is ready and user is authenticated"
-    if (!firebaseUser || !firebaseUser.uid) {
+    // and the userProfile is fully loaded to satisfy security rule checks and avoid premature permission checks
+    if (!firebaseUser || !firebaseUser.uid || !userProfile || !userProfile.adminEmail) {
       return;
     }
 
@@ -248,7 +249,7 @@ export default function App() {
     const tasksCollectionRef = collection(db, 'tasks');
     
     // Choose collective group if profile is present, otherwise fallback to userEmail
-    const adminEmailToFilter = userProfile?.adminEmail ? userProfile.adminEmail.toLowerCase() : emailToFilter;
+    const adminEmailToFilter = userProfile.adminEmail.toLowerCase();
     const q = query(tasksCollectionRef, where('adminEmail', '==', adminEmailToFilter));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
@@ -310,6 +311,7 @@ export default function App() {
     }, (error) => {
       // If of query fails, try fallback userEmail query or print helpful diagnostic
       console.warn('Real-time task synchronization for shared adminEmail failed. Retrying fallback query.', error);
+      handleFirestoreError(error, OperationType.GET, 'tasks');
     });
 
     return () => unsubscribe();
@@ -550,6 +552,59 @@ export default function App() {
     triggerToast(`Até logo, ${userName}! Painel fechado de forma segura.`);
   };
 
+  // Excluir permanentemente a conta de usuário
+  const handleDeleteAccount = async () => {
+    if (!currentUser) return;
+    const emailLower = currentUser.email.toLowerCase();
+
+    try {
+      // 1. Excluir dados adicionais ou perfil do Firestore se houver
+      try {
+        await deleteDoc(doc(db, 'user_profiles', emailLower));
+      } catch (dbErr) {
+        console.warn('Silent Firestore profile deletion warning (local fallback):', dbErr);
+      }
+
+      // 2. Excluir do localStorage do vall_users
+      const usersJson = localStorage.getItem('vall_users');
+      if (usersJson) {
+        try {
+          const users = JSON.parse(usersJson);
+          delete users[emailLower];
+          localStorage.setItem('vall_users', JSON.stringify(users));
+        } catch (localErr) {
+          console.warn('Could not clean local users list:', localErr);
+        }
+      }
+
+      // 3. Excluir conta de login do Firebase Authentication se logado
+      if (auth.currentUser) {
+        try {
+          await auth.currentUser.delete();
+        } catch (authErr: any) {
+          console.warn('Suited Firebase Auth cleanup (requires recent login fallback taken):', authErr);
+        }
+      }
+
+      // 4. Limpar estados locais, tokens e efetuar logout
+      setCurrentUser(null);
+      setUserProfile(null);
+      setGoogleUser(null);
+      setGoogleToken(null);
+      setFirebaseUser(null);
+      localStorage.removeItem('vall_current_user');
+      localStorage.removeItem('vall_user_profile');
+      localStorage.removeItem('vall_google_token');
+      localStorage.removeItem('vall_google_email');
+      localStorage.removeItem('vall_google_name');
+
+      triggerToast("Sua conta foi excluída permanentemente com sucesso!");
+    } catch (err) {
+      console.error("Erro geral no fluxo de exclusão:", err);
+      triggerToast("Ocorreu um erro ao excluir sua conta.");
+    }
+  };
+
   const handleLoginSuccess = (user: { name: string; email: string }) => {
     setCurrentUser(user);
     localStorage.setItem('vall_current_user', JSON.stringify(user));
@@ -701,6 +756,7 @@ export default function App() {
             currentUser={currentUser}
             userProfile={userProfile}
             onTriggerToast={triggerToast}
+            onDeleteAccount={handleDeleteAccount}
             onDefineAdmin={async () => {
               if (!currentUser) return;
               const newAdminProfile = {

@@ -17,9 +17,10 @@ interface GerenciamentoProps {
   userProfile: UserProfile | null;
   onTriggerToast: (msg: string) => void;
   onDefineAdmin: () => void;
+  onDeleteAccount: () => Promise<void>;
 }
 
-export default function Gerenciamento({ currentUser, userProfile, onTriggerToast, onDefineAdmin }: GerenciamentoProps) {
+export default function Gerenciamento({ currentUser, userProfile, onTriggerToast, onDefineAdmin, onDeleteAccount }: GerenciamentoProps) {
   const [teamMembers, setTeamMembers] = useState<UserProfile[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   
@@ -29,6 +30,23 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
+
+  // Excluir conta
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccountRequest = async () => {
+    setIsDeleting(true);
+    try {
+      await onDeleteAccount();
+    } catch (err) {
+      console.error(err);
+      onTriggerToast('Erro ao realizar a exclusão da conta.');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
 
   // Sync team members under the same adminEmail
   useEffect(() => {
@@ -284,6 +302,66 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
             </p>
           </div>
         </div>
+
+        {/* EXCLUIR MINHA CONTA */}
+        <div className="glass rounded-[2rem] p-6 border border-red-500/10 relative overflow-hidden bg-red-950/10 text-left">
+          <div className="flex items-center space-x-3.5 mb-4 pb-3 border-b border-red-500/15">
+            <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400">
+              <Trash2 size={20} />
+            </div>
+            <div>
+              <h2 className="font-extrabold text-base uppercase tracking-wider text-white">Zona de Perigo</h2>
+              <p className="text-[10px] text-gray-400">Remover permanentemente seus dados do VALL</p>
+            </div>
+          </div>
+          
+          {!showDeleteConfirm ? (
+            <>
+              <p className="text-xs text-gray-300 leading-relaxed mb-4">
+                Ao excluir sua conta, todas as suas informações de perfil, acessos e vinculações de calendário serão apagados imediatamente de forma definitiva.
+              </p>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full bg-red-500/15 border border-red-500/35 hover:bg-red-500/25 text-red-200 py-3.5 px-5 rounded-2xl font-bold uppercase tracking-wider text-xs transition active:scale-95 cursor-pointer flex items-center justify-center space-x-2 min-h-[46px]"
+              >
+                <Trash2 size={14} />
+                <span>Excluir Minha Conta</span>
+              </button>
+            </>
+          ) : (
+            <div className="bg-red-500/5 border border-red-500/20 p-4 rounded-2xl animate-in fade-in duration-200">
+              <p className="text-xs text-red-200 font-bold mb-3 leading-relaxed">
+                Você tem certeza absoluta? Esta ação de exclusão da conta é definitiva e irreversível! Todas as suas informações no VALL serão excluídas do sistema.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleDeleteAccountRequest}
+                  className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white py-3 px-4 rounded-xl font-bold uppercase tracking-wider text-[10px] text-center transition cursor-pointer flex items-center justify-center space-x-1"
+                >
+                  {isDeleting ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1" />
+                      <span>Excluindo...</span>
+                    </>
+                  ) : (
+                    <span>Sim, Excluir Definitivamente</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 text-gray-300 py-3 px-4 rounded-xl font-bold uppercase tracking-wider text-[10px] text-center transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
       </div>
     );
   }
@@ -503,6 +581,66 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
           </div>
         )}
       </div>
+
+      {/* EXCLUIR MINHA CONTA */}
+      <div className="glass rounded-[2rem] p-6 border border-red-500/10 relative overflow-hidden bg-red-950/10 text-left">
+        <div className="flex items-center space-x-3.5 mb-4 pb-3 border-b border-red-500/15">
+          <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400">
+            <Trash2 size={20} />
+          </div>
+          <div>
+            <h2 className="font-extrabold text-base uppercase tracking-wider text-white">Zona de Perigo</h2>
+            <p className="text-[10px] text-gray-400">Remover permanentemente seus dados do VALL</p>
+          </div>
+        </div>
+        
+        {!showDeleteConfirm ? (
+          <>
+            <p className="text-xs text-gray-300 leading-relaxed mb-4">
+              Esta ação excluirá permanentemente sua conta de usuário, perfil profissional e vinculações associadas ao e-mail <strong className="text-white">{currentUser.email}</strong>. Esta ação é definitiva e irreversível.
+            </p>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="w-full bg-red-500/15 border border-red-500/35 hover:bg-red-500/25 text-red-200 py-3.5 px-5 rounded-2xl font-bold uppercase tracking-wider text-xs transition active:scale-95 cursor-pointer flex items-center justify-center space-x-2 min-h-[46px]"
+            >
+              <Trash2 size={14} />
+              <span>Excluir Minha Conta</span>
+            </button>
+          </>
+        ) : (
+          <div className="bg-red-500/5 border border-red-500/20 p-4 rounded-2xl animate-in fade-in duration-200">
+            <p className="text-xs text-red-200 font-bold mb-3 leading-relaxed">
+              Você tem certeza absoluta? Esta ação de exclusão da conta é definitiva e irreversível! Todas as suas informações e histórico de tarefas associados ao e-mail <strong className="text-white">{currentUser.email}</strong> serão excluídos do sistema.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteAccountRequest}
+                className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white py-3 px-4 rounded-xl font-bold uppercase tracking-wider text-[10px] text-center transition cursor-pointer flex items-center justify-center space-x-1"
+              >
+                {isDeleting ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1" />
+                    <span>Excluindo...</span>
+                  </>
+                ) : (
+                  <span>Sim, Excluir Definitivamente</span>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 text-gray-300 py-3 px-4 rounded-xl font-bold uppercase tracking-wider text-[10px] text-center transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
