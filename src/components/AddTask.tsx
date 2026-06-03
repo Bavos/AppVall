@@ -266,10 +266,10 @@ export default function AddTask({
               />
             </div>
 
-            {/* [Texto] */}
+            {/* Texto */}
             <div className="space-y-2">
               <label className="text-gray-300 text-xs font-bold tracking-widest uppercase block">
-                [Texto] *
+                Texto *
               </label>
               <textarea
                 required

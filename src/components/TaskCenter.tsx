@@ -615,7 +615,7 @@ export default function TaskCenter({
                         </div>
 
                         <div>
-                          <label className="text-xs text-gray-300 uppercase tracking-widest font-bold mb-1.5 block">[Texto] *</label>
+                          <label className="text-xs text-gray-300 uppercase tracking-widest font-bold mb-1.5 block">Texto *</label>
                           <textarea
                             value={editDesc}
                             onChange={(e) => setEditDesc(e.target.value)}

@@ -451,7 +451,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                         required
                         inputMode="email"
                         autoComplete="email"
-                        placeholder="renatobz@gmail.com"
+                        placeholder="seu@email.com"
                         value={forgotEmail}
                         onChange={(e) => setForgotEmail(e.target.value)}
                         className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-mono"
@@ -596,7 +596,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                     inputMode="email"
                     autoComplete="email"
                     disabled={isSubmitting || isGoogleLoading}
-                    placeholder={isSignUp ? "exemplo@email.com" : "renatobz@gmail.com"}
+                    placeholder={isSignUp ? "exemplo@email.com" : "seu@email.com"}
                     value={email}
                     onChange={(e) => {
                       setEmail(e.target.value);
