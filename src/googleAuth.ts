@@ -72,6 +72,12 @@ provider.addScope('https://www.googleapis.com/auth/calendar.events');
 let isSigningIn = false;
 let cachedAccessToken: string | null = localStorage.getItem('vall_google_token');
 
+let onTokenExpiredCallback: (() => void) | null = null;
+
+export const registerTokenExpiredCallback = (callback: () => void) => {
+  onTokenExpiredCallback = callback;
+};
+
 // Load cached token from memory or attempt to recover
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
@@ -255,6 +261,9 @@ export const createGoogleCalendarEvent = async (
         localStorage.removeItem('vall_google_token');
         localStorage.removeItem('vall_google_email');
         localStorage.removeItem('vall_google_name');
+        if (onTokenExpiredCallback) {
+          onTokenExpiredCallback();
+        }
       }
       throw new Error(`Google Calendar API Error: ${response.status} - ${errText}`);
     }
@@ -292,6 +301,9 @@ export const getGoogleCalendarEventRSVP = async (
         localStorage.removeItem('vall_google_token');
         localStorage.removeItem('vall_google_email');
         localStorage.removeItem('vall_google_name');
+        if (onTokenExpiredCallback) {
+          onTokenExpiredCallback();
+        }
       }
       console.warn(`Could not fetch RSVP for event ${eventId}: ${response.status} - ${errText}`);
       return null;
@@ -342,6 +354,9 @@ export const deleteGoogleCalendarEvent = async (
         localStorage.removeItem('vall_google_token');
         localStorage.removeItem('vall_google_email');
         localStorage.removeItem('vall_google_name');
+        if (onTokenExpiredCallback) {
+          onTokenExpiredCallback();
+        }
       }
       console.warn(`Could not delete Google Calendar event ${eventId}: ${response.status} - ${errText}`);
       return false;

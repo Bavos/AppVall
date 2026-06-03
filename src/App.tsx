@@ -10,7 +10,7 @@ import Gerenciamento from './components/Gerenciamento';
 import Login from './components/Login';
 import ResetPassword from './components/ResetPassword';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { initAuth, googleSignIn, logoutGoogle, deleteGoogleCalendarEvent, db, handleFirestoreError, OperationType, cleanUndefined, auth } from './googleAuth';
+import { initAuth, googleSignIn, logoutGoogle, deleteGoogleCalendarEvent, db, handleFirestoreError, OperationType, cleanUndefined, auth, registerTokenExpiredCallback } from './googleAuth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDocFromServer } from 'firebase/firestore';
 
 export default function App() {
@@ -144,6 +144,12 @@ export default function App() {
         }
       }
     );
+
+    registerTokenExpiredCallback(() => {
+      setGoogleUser(null);
+      setGoogleToken(null);
+      triggerToast('Sua conexão com o Google Agenda expirou. Por favor, reconecte clicando em "Google Agenda (Desconectada)".');
+    });
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setFirebaseUser(user);
@@ -608,6 +614,18 @@ export default function App() {
   const handleLoginSuccess = (user: { name: string; email: string }) => {
     setCurrentUser(user);
     localStorage.setItem('vall_current_user', JSON.stringify(user));
+
+    // Sincronizar automaticamente as credenciais do Google se o login foi via Google
+    const savedToken = localStorage.getItem('vall_google_token');
+    const savedEmail = localStorage.getItem('vall_google_email');
+    if (savedToken && savedEmail) {
+      setGoogleToken(savedToken);
+      setGoogleUser({
+        email: savedEmail,
+        displayName: localStorage.getItem('vall_google_name') || 'Usuário Google'
+      });
+    }
+
     triggerToast(`Bem-vindo, ${user.name}!`);
   };
 
