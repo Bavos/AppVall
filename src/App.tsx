@@ -259,8 +259,10 @@ export default function App() {
 
       // Seeding: if empty collection AND we are not a member (only admins or solo users can seed)
       if (snapshot.empty) {
-        const canSeed = !userProfile || userProfile.role === 'admin';
+        const wasSeeded = localStorage.getItem('vall_tasks_seeded_fb');
+        const canSeed = !wasSeeded && (!userProfile || userProfile.role === 'admin');
         if (canSeed) {
+          localStorage.setItem('vall_tasks_seeded_fb', 'true');
           for (let i = 0; i < DEFAULT_TASKS.length; i++) {
             const t = DEFAULT_TASKS[i];
             const taskId = `task-${Date.now()}-${i}`;
@@ -277,6 +279,11 @@ export default function App() {
               console.error('Falha ao semear tarefa padrão:', e);
             }
           }
+          return;
+        } else {
+          // If already empty and we've already seeded, ensure UI state is actually cleared
+          setTasks([]);
+          localStorage.setItem('vall_tasks', JSON.stringify([]));
           return;
         }
       }
@@ -395,6 +402,13 @@ export default function App() {
   const handleDeleteTask = async (id: string) => {
     const taskToDelete = tasks.find((t) => t.id === id);
 
+    // Update local state and localStorage immediately for a premium, snappy feel
+    setTasks((prevTasks) => {
+      const updated = prevTasks.filter((t) => t.id !== id);
+      localStorage.setItem('vall_tasks', JSON.stringify(updated));
+      return updated;
+    });
+
     if (firebaseUser && firebaseUser.uid) {
       try {
         await deleteDoc(doc(db, 'tasks', id));
@@ -405,11 +419,6 @@ export default function App() {
         return;
       }
     } else {
-      setTasks((prevTasks) => {
-        const updated = prevTasks.filter((t) => t.id !== id);
-        localStorage.setItem('vall_tasks', JSON.stringify(updated));
-        return updated;
-      });
       triggerToast('Tarefa removida do painel');
     }
 
@@ -432,6 +441,13 @@ export default function App() {
       finalTask.adminEmail = userProfile.adminEmail.toLowerCase();
     }
 
+    // Always update local state immediately
+    setTasks((prevTasks) => {
+      const updated = prevTasks.map((t) => (t.id === finalTask.id ? finalTask : t));
+      localStorage.setItem('vall_tasks', JSON.stringify(updated));
+      return updated;
+    });
+
     if (firebaseUser && firebaseUser.uid) {
       try {
         await setDoc(doc(db, 'tasks', finalTask.id), cleanUndefined(finalTask));
@@ -445,11 +461,6 @@ export default function App() {
         }
       }
     } else {
-      setTasks((prevTasks) => {
-        const updated = prevTasks.map((t) => (t.id === finalTask.id ? finalTask : t));
-        localStorage.setItem('vall_tasks', JSON.stringify(updated));
-        return updated;
-      });
       if (!isSilent) {
         triggerToast('Alterações gravadas com sucesso');
       }
@@ -469,6 +480,13 @@ export default function App() {
       adminEmail: userProfile?.adminEmail ? userProfile.adminEmail.toLowerCase() : (currentUser?.email.toLowerCase() || 'renatobz@gmail.com')
     };
 
+    // Always update local state immediately
+    setTasks((prevTasks) => {
+      const updated = [newTask, ...prevTasks];
+      localStorage.setItem('vall_tasks', JSON.stringify(updated));
+      return updated;
+    });
+
     if (firebaseUser && firebaseUser.uid) {
       try {
         await setDoc(doc(db, 'tasks', taskId), cleanUndefined(newTask));
@@ -478,11 +496,6 @@ export default function App() {
         triggerToast('Erro ao agendar nova tarefa no banco.');
       }
     } else {
-      setTasks((prevTasks) => {
-        const updated = [newTask, ...prevTasks];
-        localStorage.setItem('vall_tasks', JSON.stringify(updated));
-        return updated;
-      });
       triggerToast('Nova tarefa agendada');
     }
   };
@@ -494,18 +507,19 @@ export default function App() {
 
     const updatedTask = { ...task, actualMinutes: task.actualMinutes + mins };
 
+    // Always update local state immediately
+    setTasks((prevTasks) => {
+      const updated = prevTasks.map((t) => (t.id === taskId ? updatedTask : t));
+      localStorage.setItem('vall_tasks', JSON.stringify(updated));
+      return updated;
+    });
+
     if (firebaseUser && firebaseUser.uid) {
       try {
         await setDoc(doc(db, 'tasks', taskId), cleanUndefined(updatedTask));
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `tasks/${taskId}`);
       }
-    } else {
-      setTasks((prevTasks) => {
-        const updated = prevTasks.map((t) => (t.id === taskId ? updatedTask : t));
-        localStorage.setItem('vall_tasks', JSON.stringify(updated));
-        return updated;
-      });
     }
   };
 
