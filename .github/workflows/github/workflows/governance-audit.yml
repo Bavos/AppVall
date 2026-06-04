@@ -1,0 +1,80 @@
+name: "Governance & Security Audit"
+
+# O pipeline pode rodar em cada Pull Request, em commits na main ou agendado (ex: toda madrugada)
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 4 * * *' # Roda todos os dias às 04:00 AM UTC
+  workflow_dispatch: # Permite rodar manualmente pelo painel do GitHub
+
+jobs:
+  # 1. Auditoria de Estrutura e Segurança do Código
+  code-audit:
+    name: Audit App Structure & Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Verifica credenciais expostas (chaves de API, senhas hardcoded)
+      - name: Secret Scanning (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Análise estática para garantir a arquitetura/estrutura correta
+      - name: Run Code Linter & SAST
+        run: |
+          echo "Executando análise estática da estrutura do projeto..."
+          # Exemplo: npm run lint, pylint, ou chamadas para SonarCloud/Trivy
+          # trivy fs .
+
+  # 2. Auditoria de Dependências (Governança de Software Supply Chain)
+  dependency-audit:
+    name: Audit Dependencies & Licenses
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Verifica vulnerabilidades conhecidas em pacotes (NPM, Pip, Nuget, etc.)
+      - name: Dependency Check
+        uses: snyk/actions/node@master # Ou use 'npm audit', 'pip audit' dependendo do app
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  # 3. Auditoria de Conectividade (APIs e Banco de Dados)
+  connectivity-audit:
+    name: Audit External Connections
+    runs-on: ubuntu-latest
+    # Se o banco/API for privado, você precisará configurar um Runner Interno (Self-Hosted) 
+    # ou conectar uma VPN aqui antes deste passo.
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Runtime Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Exemplo de teste de conexão com o Banco de Dados via script interno
+      - name: Test Database Connection
+        env:
+          DB_HOST: ${{ secrets.AUDIT_DB_HOST }}
+          DB_USER: ${{ secrets.AUDIT_DB_USER }}
+          DB_PASS: ${{ secrets.AUDIT_DB_PASS }}
+        run: |
+          echo "Verificando saúde e credenciais do Banco de Dados..."
+          # Aqui você roda um script seu (ex: node scripts/check-db.js)
+          # O script deve tentar conectar e retornar exit code 0 (sucesso) ou 1 (falha)
+
+      # Exemplo de verificação de integração de APIs usando Newman/Postman ou Bruno
+      - name: Test API Connections & Contracts
+        run: |
+          echo "Validando status das APIs externas integradas..."
+          # Exemplo com curl simples ou ferramentas de teste de API
+          # curl -f https://api.suaempresa.com/health || exit 1
