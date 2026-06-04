@@ -137,10 +137,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           const profileDocRef = doc(db, 'user_profiles', email.toLowerCase());
           const profSnap = await getDoc(profileDocRef);
           if (!profSnap.exists()) {
-            // Auto define old/unprofiled users or renatobz as admin
+            // Auto define old/unprofiled users as admin
             await setDoc(profileDocRef, {
               email: email.toLowerCase(),
-              name: credential.user.displayName || 'Renato Zarvos',
+              name: credential.user.displayName || 'Administrador',
               role: 'admin',
               adminEmail: email.toLowerCase(),
               createdAt: new Date().toISOString()
@@ -150,7 +150,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           console.warn('Silent user profile check/upgrade skipped:', profE);
         }
 
-        onLoginSuccess({ name: credential.user.displayName || 'Renato Zarvos', email });
+        onLoginSuccess({ name: credential.user.displayName || 'Administrador', email });
 
         // Save simulated user details
         const usersJson = localStorage.getItem('vall_users');
@@ -196,16 +196,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         const usersJson = localStorage.getItem('vall_users');
         let users = usersJson ? JSON.parse(usersJson) : {};
         const customUser = users[email.toLowerCase()];
-        const defaultPassword = email.toLowerCase() === 'renatobz@gmail.com'
-          ? (customUser ? customUser.password : '1234')
-          : (customUser?.password);
 
         if (customUser && customUser.password === password) {
           // Local fallback successful, but notify user they need email/password auth enabled
           onLoginSuccess({ name: customUser.name, email });
-          return;
-        } else if (email.toLowerCase() === 'renatobz@gmail.com' && password === defaultPassword) {
-          onLoginSuccess({ name: 'Renato Zarvos', email: 'renatobz@gmail.com' });
           return;
         }
       }
@@ -243,7 +237,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     const usersJson = localStorage.getItem('vall_users');
     const users = usersJson ? JSON.parse(usersJson) : {};
 
-    const userExists = lowerEmail === 'renatobz@gmail.com' || !!users[lowerEmail];
+    const userExists = !!users[lowerEmail];
 
     if (userExists) {
       setForgotStep(2);
@@ -272,9 +266,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     let users = usersJson ? JSON.parse(usersJson) : {};
 
     let userName = 'Usuário';
-    if (lowerEmail === 'renatobz@gmail.com') {
-      userName = 'Renato Zarvos';
-    } else if (users[lowerEmail]) {
+    if (users[lowerEmail]) {
       userName = users[lowerEmail].name || 'Usuário';
     }
 
@@ -293,38 +285,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       setErrorMessage(null);
       setSuccessMessage(null);
     }, 2000);
-  };
-
-  const handleQuickLogin = async () => {
-    // Check if there is an overridden password
-    const usersJson = localStorage.getItem('vall_users');
-    let users = usersJson ? JSON.parse(usersJson) : {};
-    const customUser = users['renatobz@gmail.com'];
-    const currentPassword = customUser ? customUser.password : '1234';
-
-    setEmail('renatobz@gmail.com');
-    setPassword(currentPassword);
-
-    try {
-      // Attempt login with Firebase Auth
-      const credential = await signInWithEmailAndPassword(auth, 'renatobz@gmail.com', currentPassword);
-      onLoginSuccess({ name: credential.user.displayName || 'Renato Zarvos', email: 'renatobz@gmail.com' });
-    } catch (err: any) {
-      console.warn('Quick login Firebase Auth failed, falling back to local simulation:', err);
-      // Auto register the Quick Login account if not found in Firebase Auth
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-        try {
-          const credential = await createUserWithEmailAndPassword(auth, 'renatobz@gmail.com', currentPassword);
-          await updateProfile(credential.user, { displayName: 'Renato Zarvos' });
-          onLoginSuccess({ name: 'Renato Zarvos', email: 'renatobz@gmail.com' });
-          return;
-        } catch (regErr) {
-          console.error('Quick login auto-registration failed:', regErr);
-        }
-      }
-      // If everything fails, fall back to local flow
-      onLoginSuccess({ name: 'Renato Zarvos', email: 'renatobz@gmail.com' });
-    }
   };
 
   const handleGoogleLogin = async () => {

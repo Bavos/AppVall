@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Shield, Trash2, UserPlus, Lock, Mail, User, Info, Check, Copy } from 'lucide-react';
-import { db, handleFirestoreError, OperationType, cleanUndefined } from '../googleAuth';
+import { db, auth, handleFirestoreError, OperationType, cleanUndefined } from '../googleAuth';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { updatePassword } from 'firebase/auth';
 
 interface UserProfile {
   email: string;
@@ -35,6 +36,89 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Password change fields
+  const [changeNewPassword, setChangeNewPassword] = useState('');
+  const [changeConfirmPassword, setChangeConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showChangeForm, setShowChangeForm] = useState(false);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile) return;
+
+    const newPass = changeNewPassword.trim();
+    const confirmPass = changeConfirmPassword.trim();
+
+    if (!newPass || !confirmPass) {
+      onTriggerToast('Por favor, preencha todos os campos!');
+      return;
+    }
+
+    if (newPass.length < 4) {
+      onTriggerToast('A nova senha deve ter pelo menos 4 caracteres.');
+      return;
+    }
+
+    if (newPass !== confirmPass) {
+      onTriggerToast('As senhas digitadas não coincidem.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      // 1. Update Firebase Auth Password if authenticated
+      if (auth.currentUser) {
+        try {
+          await updatePassword(auth.currentUser, newPass);
+        } catch (authErr: any) {
+          console.warn('Falha ao atualizar senha no Firebase Auth:', authErr);
+          if (authErr && authErr.code === 'auth/requires-recent-login') {
+            onTriggerToast('Por segurança, faça login novamente para trocar a senha.');
+            setIsChangingPassword(false);
+            return;
+          }
+        }
+      }
+
+      // 2. Update Firestore profile
+      const updatedProf = {
+        ...userProfile,
+        password: newPass
+      };
+      
+      try {
+        await setDoc(doc(db, 'user_profiles', currentUser.email.toLowerCase()), cleanUndefined(updatedProf));
+      } catch (dbErr) {
+        console.warn('Erro ao sincronizar nova senha com o Firestore:', dbErr);
+      }
+
+      // 3. Update localStorage users pool for offline resilience
+      const usersJson = localStorage.getItem('vall_users');
+      if (usersJson) {
+        try {
+          const users = JSON.parse(usersJson);
+          if (users[currentUser.email.toLowerCase()]) {
+            users[currentUser.email.toLowerCase()].password = newPass;
+            localStorage.setItem('vall_users', JSON.stringify(users));
+          }
+        } catch (e) {}
+      }
+
+      // 4. Update locally cached profile so state reflects it
+      localStorage.setItem('vall_user_profile', JSON.stringify(updatedProf));
+
+      onTriggerToast('Senha atualizada com sucesso!');
+      setChangeNewPassword('');
+      setChangeConfirmPassword('');
+      setShowChangeForm(false);
+    } catch (err) {
+      console.error(err);
+      onTriggerToast('Ocorreu um erro ao alterar a senha.');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const handleDeleteAccountRequest = async () => {
     setIsDeleting(true);
     try {
@@ -56,8 +140,27 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
       const cached = localStorage.getItem(`vall_team_members_${userProfile.adminEmail.toLowerCase()}`);
       if (cached) {
         try {
-          setTeamMembers(JSON.parse(cached));
-          return;
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            const hasAdmin = parsed.some(m => m.role === 'admin' || m.email.toLowerCase() === userProfile.adminEmail.toLowerCase());
+            if (!hasAdmin) {
+              parsed.push({
+                email: userProfile.adminEmail.toLowerCase(),
+                name: userProfile.name || 'Administrador',
+                role: 'admin',
+                adminEmail: userProfile.adminEmail.toLowerCase(),
+                createdAt: userProfile.createdAt || new Date().toISOString()
+              });
+            }
+            // Sort parsed members
+            parsed.sort((a, b) => {
+              if (a.role === 'admin') return -1;
+              if (b.role === 'admin') return 1;
+              return new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime();
+            });
+            setTeamMembers(parsed);
+            return;
+          }
         } catch (e) {}
       }
 
@@ -100,6 +203,19 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
       snapshot.forEach((docSnap) => {
         members.push(docSnap.data() as UserProfile);
       });
+
+      // Ensure the Admin themselves is always part of the team
+      const hasAdmin = members.some(m => m.role === 'admin' || m.email.toLowerCase() === userProfile.adminEmail.toLowerCase());
+      if (!hasAdmin && userProfile) {
+        members.push({
+          email: userProfile.adminEmail.toLowerCase(),
+          name: userProfile.name || 'Administrador',
+          role: 'admin',
+          adminEmail: userProfile.adminEmail.toLowerCase(),
+          createdAt: userProfile.createdAt || new Date().toISOString()
+        });
+      }
+
       // Sort members (admin first, then oldest member)
       members.sort((a, b) => {
         if (a.role === 'admin') return -1;
@@ -579,6 +695,101 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
               </form>
             )}
           </div>
+        )}
+      </div>
+
+      {/* ALTERAÇÃO DE SENHA */}
+      <div className="glass rounded-[2rem] p-6 border border-white/10 relative overflow-hidden bg-black/40 text-left">
+        <div className="absolute -top-12 -right-12 w-32 h-32 bg-[#2DD4BF]/5 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="flex items-center space-x-3.5 mb-4 pb-3 border-b border-white/5">
+          <div className="w-10 h-10 rounded-xl bg-[#2DD4BF]/10 border border-[#2DD4BF]/20 flex items-center justify-center text-[#2DD4BF]">
+            <Lock size={20} />
+          </div>
+          <div>
+            <h2 className="font-extrabold text-base uppercase tracking-wider text-white">Alteração de Senha</h2>
+            <p className="text-[10px] text-gray-400">Atualize sua senha de acesso ao VALL</p>
+          </div>
+        </div>
+
+        {!showChangeForm ? (
+          <>
+            <p className="text-xs text-gray-300 leading-relaxed mb-4">
+              Por questões de segurança, mantenha sua senha atualizada para proteger o compartilhamento da sua agenda. No VALL, todos os colaboradores utilizam senha própria.
+            </p>
+            <button
+              onClick={() => setShowChangeForm(true)}
+              className="w-full bg-[#2DD4BF]/10 border border-[#2DD4BF]/30 hover:bg-[#2DD4BF]/15 text-[#2DD4BF] py-3.5 px-5 rounded-2xl font-bold uppercase tracking-wider text-xs transition active:scale-95 cursor-pointer flex items-center justify-center space-x-2 min-h-[46px]"
+            >
+              <Lock size={14} />
+              <span>Alterar Minha Senha</span>
+            </button>
+          </>
+        ) : (
+          <form onSubmit={handleChangePassword} className="space-y-4 animate-in slide-in-from-bottom-2 duration-200">
+            <div className="space-y-3">
+              {/* password field */}
+              <div className="space-y-1">
+                <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">Nova Senha (Mín. 4 caracteres)</span>
+                <div className="flex items-center bg-white/5 border border-white/15 rounded-2xl p-2 px-3 focus-within:border-[#2DD4BF]/50">
+                  <Lock className="text-gray-400 mr-2 shrink-0" size={14} />
+                  <input
+                    type="password"
+                    required
+                    placeholder="Digite sua nova senha"
+                    value={changeNewPassword}
+                    onChange={(e) => setChangeNewPassword(e.target.value)}
+                    className="bg-transparent text-xs w-full text-white border-0 outline-none focus:outline-none focus:ring-0 pt-0.5 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* confirm password field */}
+              <div className="space-y-1">
+                <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">Confirmar Nova Senha</span>
+                <div className="flex items-center bg-white/5 border border-white/15 rounded-2xl p-2 px-3 focus-within:border-[#2DD4BF]/50">
+                  <Lock className="text-gray-400 mr-2 shrink-0" size={14} />
+                  <input
+                    type="password"
+                    required
+                    placeholder="Confirme sua nova senha"
+                    value={changeConfirmPassword}
+                    onChange={(e) => setChangeConfirmPassword(e.target.value)}
+                    className="bg-transparent text-xs w-full text-white border-0 outline-none focus:outline-none focus:ring-0 pt-0.5 font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <button
+                type="submit"
+                disabled={isChangingPassword}
+                className="flex-1 bg-[#2DD4BF] hover:bg-[#5eead4] disabled:opacity-50 text-black py-3 px-4 rounded-xl font-bold uppercase tracking-wider text-[10px] text-center transition cursor-pointer flex items-center justify-center space-x-1 min-h-[40px]"
+              >
+                {isChangingPassword ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin mr-1" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <span>Salvar Nova Senha</span>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={isChangingPassword}
+                onClick={() => {
+                  setChangeNewPassword('');
+                  setChangeConfirmPassword('');
+                  setShowChangeForm(false);
+                }}
+                className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 text-gray-300 py-3 px-4 rounded-xl font-bold uppercase tracking-wider text-[10px] text-center transition cursor-pointer min-h-[40px]"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
         )}
       </div>
 

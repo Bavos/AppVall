@@ -113,7 +113,7 @@ app.post('/api/register', async (req, res) => {
     console.log(`[Database] User profile synchronized in Firestore: ${email}`);
 
     // Action 2: Send system notification email to Admin
-    const adminEmailAddress = process.env.ADMIN_EMAIL || 'renatobz@gmail.com';
+    const adminEmailAddress = process.env.ADMIN_EMAIL || 'admin@example.com';
     const adminMailSubject = 'Novo usuário cadastrado';
     const adminMailContent = `Novo usuário cadastrado no sistema:\n\nNome: ${name}\nE-mail: ${email}\nFunção: ${role || 'admin'}\nData de Cadastro: ${new Date().toLocaleString('pt-BR')}`;
 

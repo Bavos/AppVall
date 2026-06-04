@@ -256,6 +256,31 @@ export default function App() {
     
     // Choose collective group if profile is present, otherwise fallback to userEmail
     const adminEmailToFilter = userProfile.adminEmail.toLowerCase();
+
+    // Sincronizar preventivamente tarefas locais com o Firestore para evitar perda de dados e deleções acidentais nas recargas de página
+    const localTasksRaw = localStorage.getItem('vall_tasks');
+    if (localTasksRaw) {
+      try {
+        const localTasks: Task[] = JSON.parse(localTasksRaw);
+        const tasksToSync = localTasks.filter(t => 
+          t.adminEmail === adminEmailToFilter || 
+          (!t.adminEmail && t.userEmail === emailToFilter)
+        );
+        for (const t of tasksToSync) {
+          const sanitized: Task = {
+            ...t,
+            userEmail: t.userEmail || emailToFilter,
+            adminEmail: t.adminEmail || adminEmailToFilter
+          };
+          setDoc(doc(db, 'tasks', t.id), cleanUndefined(sanitized)).catch(e => {
+            console.warn('Falha silenciosa ao sincronizar tarefa local:', e);
+          });
+        }
+      } catch (err) {
+        console.warn('Erro ao processar backup de tarefas locais:', err);
+      }
+    }
+
     const q = query(tasksCollectionRef, where('adminEmail', '==', adminEmailToFilter));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
@@ -332,7 +357,7 @@ export default function App() {
         triggerToast('Google Agenda conectada!');
 
         // Safe migration: upload any local-only tasks created offline/disconnected to Firestore 
-        const emailToFilter = currentUser?.email.toLowerCase() || 'renatobz@gmail.com';
+        const emailToFilter = currentUser?.email.toLowerCase() || 'admin@example.com';
         const localTasksRaw = localStorage.getItem('vall_tasks');
         if (localTasksRaw) {
           try {
@@ -484,8 +509,8 @@ export default function App() {
       status: newTaskData.status || 'Pendente',
       actualMinutes: 0,
       createdAt: new Date().toISOString(),
-      userEmail: currentUser?.email.toLowerCase() || 'renatobz@gmail.com',
-      adminEmail: userProfile?.adminEmail ? userProfile.adminEmail.toLowerCase() : (currentUser?.email.toLowerCase() || 'renatobz@gmail.com')
+      userEmail: currentUser?.email.toLowerCase() || 'admin@example.com',
+      adminEmail: userProfile?.adminEmail ? userProfile.adminEmail.toLowerCase() : (currentUser?.email.toLowerCase() || 'admin@example.com')
     };
 
     // Always update local state immediately
@@ -540,7 +565,7 @@ export default function App() {
 
   // Logout com feedback elegante e limpeza do Firebase Auth
   const handleLogout = async () => {
-    const userName = currentUser?.name || 'Renato Zarvos';
+    const userName = currentUser?.name || 'Administrador';
     try {
       await auth.signOut();
     } catch (e) {
@@ -548,6 +573,9 @@ export default function App() {
     }
     setCurrentUser(null);
     localStorage.removeItem('vall_current_user');
+    localStorage.removeItem('vall_user_profile');
+    localStorage.removeItem('vall_tasks');
+    localStorage.removeItem('vall_tasks_seeded_fb');
     // Clear Google token as well
     localStorage.removeItem('vall_google_token');
     localStorage.removeItem('vall_google_email');

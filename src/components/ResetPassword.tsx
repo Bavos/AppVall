@@ -87,7 +87,7 @@ export default function ResetPassword({ onBackToLogin }: ResetPasswordProps) {
         const usersJson = localStorage.getItem('vall_users');
         let users = usersJson ? JSON.parse(usersJson) : {};
 
-        const userExists = lowerEmail === 'renatobz@gmail.com' || !!users[lowerEmail];
+        const userExists = !!users[lowerEmail];
 
         if (!userExists) {
           setErrorMessage('Cadastro não encontrado para o e-mail informado.');
@@ -97,9 +97,7 @@ export default function ResetPassword({ onBackToLogin }: ResetPasswordProps) {
 
         // Reset password in local state
         let userName = 'Usuário';
-        if (lowerEmail === 'renatobz@gmail.com') {
-          userName = 'Renato Zarvos';
-        } else if (users[lowerEmail]) {
+        if (users[lowerEmail]) {
           userName = users[lowerEmail].name || 'Usuário';
         }
 
