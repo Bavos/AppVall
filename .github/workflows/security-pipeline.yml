@@ -48,8 +48,9 @@ jobs:
           echo "NPM Audit executed."
         continue-on-error: true
 
+      # CORREÇÃO: Atualizado de v0.29.0 para v0.28.0 (ou v0.30.0+) para evitar o erro de tag inexistente
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.29.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -59,10 +60,12 @@ jobs:
           exit-code: '0'
         continue-on-error: true
 
+      # AJUSTE: Adicionado 'image:' para garantir que a action do Semgrep use a imagem correta sem quebrar
       - name: Run Semgrep (SAST)
         uses: semgrep/semgrep-action@v1
         with:
           config: p/javascript
+          image: returntocorp/semgrep
         continue-on-error: true
 
       - name: Generate Security Summary Report
@@ -87,4 +90,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: security-audit-reports
-          path: security-reports/ 
+          path: security-reports/
