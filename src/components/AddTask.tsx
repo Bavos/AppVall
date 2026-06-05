@@ -11,6 +11,7 @@ interface AddTaskProps {
   googleToken: string | null;
   onGoogleSignIn: () => Promise<void>;
   onGoogleSignOut: () => Promise<void>;
+  onTriggerToast?: (msg: string) => void;
 }
 
 export default function AddTask({
@@ -20,7 +21,8 @@ export default function AddTask({
   googleUser,
   googleToken,
   onGoogleSignIn,
-  onGoogleSignOut
+  onGoogleSignOut,
+  onTriggerToast
 }: AddTaskProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -106,6 +108,16 @@ export default function AddTask({
 
       // Mostra alerta de sucesso e limpa formulário
       setAlertSuccess(true);
+      if (onTriggerToast) {
+        onTriggerToast('Sucesso! Ação registrada.');
+      }
+      
+      // Rola o container principal de volta ao topo de forma suave para mostrar o Alerta Verde
+      const mainContent = document.getElementById('app_main_content');
+      if (mainContent) {
+        mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
       setTitle('');
       setDescription('');
       setEmail('');

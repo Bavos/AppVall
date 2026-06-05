@@ -11,6 +11,7 @@ interface DashboardProps {
   onViewTasksTab: () => void;
   userName: string;
   onTriggerToast?: (msg: string) => void;
+  onDateChange?: (date: string) => void;
 }
 
 export default function Dashboard({
@@ -20,50 +21,62 @@ export default function Dashboard({
   onAddTaskTab,
   onViewTasksTab,
   userName,
-  onTriggerToast
+  onTriggerToast,
+  onDateChange
 }: DashboardProps) {
   const todayStr = getTodayDateString();
   const [showWeeklyCompromissos, setShowWeeklyCompromissos] = React.useState(false);
 
-  // Função para retornar os 7 dias da semana (Segunda a Domingo) baseado no dia de hoje
+  // Use activeDate from global state as the selected dashboard view date, fallback to todayStr
+  const dashboardDate = activeDate || todayStr;
+
+  const getOffsetDateString = (dateStr: string, offset: number): string => {
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    d.setDate(d.getDate() + offset);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const yesterdayStr = getOffsetDateString(todayStr, -1);
+  const tomorrowStr = getOffsetDateString(todayStr, 1);
+
+  // Função para retornar os 8 dias baseado na data de visualização escolhida (ex: de 12 de junho até 19 de junho)
   const daysOfWeek = React.useMemo(() => {
-    const parts = todayStr.split('-');
+    const parts = dashboardDate.split('-');
     if (parts.length !== 3) return [];
     
-    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-    const dayOfWeek = date.getDay(); // 0 is Sunday, 1 is Monday...
-    
-    // Distância para a Segunda-feira
-    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    
-    const monday = new Date(date);
-    monday.setDate(date.getDate() + diffToMonday);
+    const baseDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     
     const days = [];
     const weekdays = [
-      'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'
+      'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'
     ];
     
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
+    // Gerar 8 dias a partir da data de visualização
+    for (let i = 0; i < 8; i++) {
+      const d = new Date(baseDate);
+      d.setDate(baseDate.getDate() + i);
       const yStr = d.getFullYear();
       const mStr = String(d.getMonth() + 1).padStart(2, '0');
       const dStr = String(d.getDate()).padStart(2, '0');
       const dateStr = `${yStr}-${mStr}-${dStr}`;
       days.push({
         dateStr,
-        dayName: weekdays[i],
+        dayName: weekdays[d.getDay()],
         dayNum: d.getDate(),
         monthNum: d.getMonth() + 1,
         isToday: dateStr === todayStr
       });
     }
     return days;
-  }, [todayStr]);
+  }, [dashboardDate, todayStr]);
 
   const startOfWeek = daysOfWeek[0]?.dateStr || '';
-  const endOfWeek = daysOfWeek[6]?.dateStr || '';
+  const endOfWeek = daysOfWeek[daysOfWeek.length - 1]?.dateStr || '';
 
   const weeklyTasks = React.useMemo(() => {
     if (!startOfWeek || !endOfWeek) return [];
@@ -88,9 +101,9 @@ export default function Dashboard({
     'Baixa': 3
   };
 
-  // Filtra as tarefas de hoje e ordena por importância
+  // Filtra as tarefas do dia selecionado e ordena por importância
   const todayTasks = tasks
-    .filter(t => t.date === todayStr)
+    .filter(t => t.date === dashboardDate)
     .sort((a, b) => {
       const pA = priorityOrder[a.priority] || 4;
       const pB = priorityOrder[b.priority] || 4;
@@ -100,11 +113,8 @@ export default function Dashboard({
   return (
     <div className="flex-1 flex flex-col space-y-6 pb-24">
       {/* 2. CONTEXTO E SAUDAÇÃO */}
-      <section className="px-2" id="id_dashboard_context">
-        <h2 className="text-3xl font-light text-gray-400 mb-2">
-          {formatToRelativeDate(todayStr)}
-        </h2>
-        <div className="flex justify-between items-end">
+      <section className="px-2 space-y-4" id="id_dashboard_context">
+        <div className="flex justify-between items-start">
           <div>
             <h2 className="text-4xl font-extrabold uppercase leading-[0.9] tracking-tighter mb-2 text-white">
               Painel<br/>Geral
@@ -115,13 +125,56 @@ export default function Dashboard({
             </p>
           </div>
         </div>
+
+        {/* CONTROLES DE DATA UNIFICADOS (Hoje + Calendário Interativo para liberar a escolha de qualquer data) */}
+        <div className="flex flex-col gap-3 bg-white/[0.02] border border-white/5 rounded-2xl p-3.5" id="id_unified_date_controls">
+          <span className="text-[10px] text-gray-400 uppercase tracking-widest font-bold font-mono">Data de Foco / Visualização</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Botão Hoje */}
+            <button
+              onClick={() => onDateChange && onDateChange(todayStr)}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition border select-none cursor-pointer active:scale-95 flex items-center gap-2 ${
+                dashboardDate === todayStr
+                  ? 'bg-[#2DD4BF]/25 border-[#2DD4BF] text-[#2DD4BF] shadow-[0_0_15px_rgba(45,212,191,0.1)]'
+                  : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${dashboardDate === todayStr ? 'bg-[#2DD4BF] animate-pulse' : 'bg-gray-400'}`} />
+              Hoje
+            </button>
+
+            {/* Calendário para Escolha Livre */}
+            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 hover:border-[#2DD4BF]/50 transition-all select-none">
+              <Calendar size={13} className="text-[#2DD4BF] shrink-0" />
+              <input
+                type="date"
+                value={dashboardDate}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val && onDateChange) {
+                    onDateChange(val);
+                  }
+                }}
+                className="bg-transparent text-white text-[11px] font-semibold focus:outline-none cursor-pointer w-24 scheme-dark border-0 p-0"
+              />
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* 4. HOJE: ENFOQUE DE ATIVIDADES */}
       <section className="px-2 space-y-4" id="id_dashboard_activities">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-extrabold text-sm uppercase tracking-widest text-white">Foco para Hoje</h3>
+            <h3 className="font-extrabold text-sm uppercase tracking-widest text-[#2DD4BF]">
+              {dashboardDate === todayStr
+                ? 'Foco para Hoje'
+                : dashboardDate === yesterdayStr
+                ? 'Foco de Ontem'
+                : dashboardDate === tomorrowStr
+                ? 'Foco para Amanhã'
+                : `Foco - ${formatToRelativeDate(dashboardDate)}`}
+            </h3>
             <p className="text-xs text-gray-300">Tarefas de maior relevância</p>
           </div>
           <button 
@@ -237,14 +290,17 @@ export default function Dashboard({
 
           {showWeeklyCompromissos && (
             <div className="glass rounded-2xl p-5 border border-white/10 space-y-4 animate-in fade-in duration-200" id="id_weekly_commitments">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
                 <div className="flex items-center space-x-2 text-[#2DD4BF]">
                   <CalendarRange size={18} />
                   <h4 className="font-extrabold text-sm uppercase tracking-wider">Compromissos da Semana</h4>
                 </div>
-                <span className="text-[10px] bg-white/5 px-2.5 py-1 rounded-lg text-gray-400 font-mono border border-white/5">
-                  {daysOfWeek[0] && formatDateShort(daysOfWeek[0].dateStr)} - {daysOfWeek[6] && formatDateShort(daysOfWeek[6].dateStr)}
-                </span>
+                
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] bg-[#2DD4BF]/10 text-[#2DD4BF] font-mono border border-[#2DD4BF]/20 px-2.5 py-1 rounded-lg shrink-0">
+                    {daysOfWeek[0] && formatDateShort(daysOfWeek[0].dateStr)} - {daysOfWeek[daysOfWeek.length - 1] && formatDateShort(daysOfWeek[daysOfWeek.length - 1].dateStr)}
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-4">

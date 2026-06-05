@@ -812,6 +812,7 @@ export default function App() {
             onViewTasksTab={() => setActiveTab('tasks')}
             userName={currentUser.name}
             onTriggerToast={triggerToast}
+            onDateChange={setActiveDate}
           />
         )}
 
@@ -840,6 +841,7 @@ export default function App() {
             googleToken={googleToken}
             onGoogleSignIn={handleGoogleSignIn}
             onGoogleSignOut={handleGoogleSignOut}
+            onTriggerToast={triggerToast}
           />
         )}
 
