@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Grid, PlusSquare, LogOut, RefreshCw, Sparkles, CheckCircle2, FileText, X, Users } from 'lucide-react';
 import { Task, ViewTab, FocusSession, TaskStatus } from './types';
-import { DEFAULT_TASKS, getTodayDateString } from './utils';
+import { DEFAULT_TASKS, getTodayDateString, formatToRelativeDate } from './utils';
 import Dashboard from './components/Dashboard';
 import TaskCenter from './components/TaskCenter';
 import AddTask from './components/AddTask';
@@ -10,7 +10,7 @@ import Gerenciamento from './components/Gerenciamento';
 import Login from './components/Login';
 import ResetPassword from './components/ResetPassword';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { initAuth, googleSignIn, logoutGoogle, deleteGoogleCalendarEvent, db, handleFirestoreError, OperationType, cleanUndefined, auth, registerTokenExpiredCallback } from './googleAuth';
+import { initAuth, googleSignIn, logoutGoogle, deleteGoogleCalendarEvent, db, handleFirestoreError, OperationType, cleanUndefined, auth, registerTokenExpiredCallback, getGoogleCalendarEventRSVP } from './googleAuth';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDocFromServer } from 'firebase/firestore';
 
 export default function App() {
@@ -190,6 +190,44 @@ export default function App() {
       localStorage.setItem('vall_tasks', JSON.stringify(tasks));
     }
   }, [tasks, currentUser]);
+
+  // Autocheck RSVP globally for tasks of the active date on load/transition to keep statuses fresh automatically
+  useEffect(() => {
+    if (!googleToken) return;
+    const activeDateTasks = tasks.filter(t => t.date === activeDate && t.googleEventId && t.email);
+    if (activeDateTasks.length === 0) return;
+
+    const timer = setTimeout(() => {
+      const autoCheck = async () => {
+        for (const task of activeDateTasks) {
+          try {
+            const rsvpData = await getGoogleCalendarEventRSVP(googleToken, task.googleEventId!, task.email!);
+            if (rsvpData) {
+              let updatedStatus = task.status;
+              if (rsvpData.rsvpStatus === 'accepted' && task.status === 'Pendente') {
+                updatedStatus = 'Em Progresso';
+              } else if (rsvpData.rsvpStatus === 'declined' && task.status === 'Em Progresso') {
+                updatedStatus = 'Pendente';
+              }
+              if (task.rsvpStatus !== rsvpData.rsvpStatus || task.status !== updatedStatus || rsvpData.hangoutLink !== task.googleMeetLink) {
+                await handleUpdateTask({
+                  ...task,
+                  rsvpStatus: rsvpData.rsvpStatus,
+                  googleMeetLink: rsvpData.hangoutLink || task.googleMeetLink,
+                  status: updatedStatus
+                }, true); // silent update
+              }
+            }
+          } catch (err: any) {
+            console.error('Global auto RSVP check failed:', err);
+          }
+        }
+      };
+      autoCheck();
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [activeDate, googleToken, tasks.length]);
 
   // Sync user profiles in real-time from Firestore when authenticated
   useEffect(() => {
@@ -558,6 +596,10 @@ export default function App() {
       adminEmail: userProfile?.adminEmail ? userProfile.adminEmail.toLowerCase() : (currentUser?.email.toLowerCase() || 'admin@example.com')
     };
 
+    // Sempre define a data ativa global no dia em que a tarefa foi criada
+    // para que ao redirecionar, o usuário veja instantaneamente o novo agendamento!
+    setActiveDate(newTask.date);
+
     // Always update local state immediately
     setTasks((prevTasks) => {
       const updated = [newTask, ...prevTasks];
@@ -565,17 +607,31 @@ export default function App() {
       return updated;
     });
 
+    const formattedTaskDate = formatToRelativeDate(newTask.date);
+    let successToastMsg = `Atividade agendada para ${formattedTaskDate}`;
+
+    if (newTask.category === 'Agendamento') {
+      const timeStr = newTask.time ? ` às ${newTask.time}` : '';
+      successToastMsg = `🎯 Agendamento: "${newTask.title}" criado para ${formattedTaskDate}${timeStr}!`;
+    } else if (newTask.category === 'Disponível') {
+      successToastMsg = `👩‍⚕️ Profissional Disponível: "${newTask.title}" cadastrada para ${formattedTaskDate}!`;
+    } else if (newTask.category === 'Curinga') {
+      successToastMsg = `🃏 Paciente Curinga: "${newTask.title}" adicionado para ${formattedTaskDate}!`;
+    } else if (newTask.category === 'Notas') {
+      successToastMsg = `📝 Nota: "${newTask.title}" salva para ${formattedTaskDate}!`;
+    }
+
     if (firebaseUser && firebaseUser.uid) {
       try {
         await setDoc(doc(db, 'tasks', taskId), cleanUndefined(newTask));
-        triggerToast('Nova tarefa agendada');
+        triggerToast(successToastMsg);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `tasks/${taskId}`);
         triggerToast('Erro ao agendar nova tarefa no banco.');
         throw error;
       }
     } else {
-      triggerToast('Nova tarefa agendada');
+      triggerToast(successToastMsg);
     }
   };
 
@@ -813,6 +869,8 @@ export default function App() {
             userName={currentUser.name}
             onTriggerToast={triggerToast}
             onDateChange={setActiveDate}
+            googleToken={googleToken}
+            onUpdateTask={handleUpdateTask}
           />
         )}
 

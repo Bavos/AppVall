@@ -31,6 +31,7 @@ export default function AddTask({
   const [date, setDate] = useState(activeDate);
   const [estimatedMinutes, setEstimatedMinutes] = useState(25);
   const [alertSuccess, setAlertSuccess] = useState(false);
+  const [lastCreated, setLastCreated] = useState<{ title: string; category: TaskCategory } | null>(null);
 
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<TaskStatus>('Pendente');
@@ -106,11 +107,9 @@ export default function AddTask({
         email: category === 'Agendamento' ? email.trim() : undefined
       });
 
-      // Mostra alerta de sucesso e limpa formulário
+      // Mostra alerta de sucesso e limpa formulário preservando dados para o feedback dinâmico
+      setLastCreated({ title: title.trim(), category });
       setAlertSuccess(true);
-      if (onTriggerToast) {
-        onTriggerToast('Sucesso! Ação registrada.');
-      }
       
       // Rola o container principal de volta ao topo de forma suave para mostrar o Alerta Verde
       const mainContent = document.getElementById('app_main_content');
@@ -126,9 +125,10 @@ export default function AddTask({
       
       setTimeout(() => {
         setAlertSuccess(false);
+        setLastCreated(null);
         onChangeTab('dashboard'); // Redireciona para o Painel Geral para ver a lista atualizada
         isSubmittingRef.current = false;
-      }, 2000);
+      }, 2200);
     } catch (err) {
       console.error('Error during submit:', err);
       // Se deu erro, isSubmittingRef é liberado para que o usuário possa tentar novamente ou relatar o problema.
@@ -147,13 +147,26 @@ export default function AddTask({
         <p className="text-gray-300 text-sm">Inscreva uma nova atividade operacional</p>
       </section>
 
-      {/* ALERTA DE SUCESSO COESIVO */}
-      {alertSuccess && (
-        <div className="mx-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-2xl flex items-center gap-3 backdrop-blur-md">
-          <CheckCircle size={20} />
+      {/* ALERTA DE SUCESSO COESIVO E DINÂMICO */}
+      {alertSuccess && lastCreated && (
+        <div className="mx-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-2xl flex items-center gap-3 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+          <CheckCircle size={20} className="text-[#2DD4BF] shrink-0" />
           <div>
-            <div className="font-bold text-sm">Sucesso!</div>
-            <div className="text-xs opacity-90">Tarefa adicionada e programada no fluxo diário.</div>
+            <div className="font-bold text-sm text-white">Adicionado com Sucesso!</div>
+            <div className="text-xs opacity-90 text-gray-200 mt-1">
+              {lastCreated.category === 'Agendamento' && (
+                <span>O agendamento de <strong className="text-white">"{lastCreated.title}"</strong> foi gerado e integrado ao cronograma.</span>
+              )}
+              {lastCreated.category === 'Disponível' && (
+                <span>A disponibilidade da profissional <strong className="text-white">"{lastCreated.title}"</strong> foi registrada.</span>
+              )}
+              {lastCreated.category === 'Curinga' && (
+                <span>O paciente Curinga <strong className="text-white">"{lastCreated.title}"</strong> foi adicionado com sucesso.</span>
+              )}
+              {lastCreated.category === 'Notas' && (
+                <span>A anotação <strong className="text-white">"{lastCreated.title}"</strong> foi guardada no repositório.</span>
+              )}
+            </div>
           </div>
         </div>
       )}

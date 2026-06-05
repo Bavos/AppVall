@@ -1,7 +1,8 @@
 import React from 'react';
-import { CheckCircle2, Circle, Clock, Zap, Calendar, CalendarRange, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Zap, Calendar, CalendarRange, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { Task } from '../types';
 import { formatToRelativeDate, getTodayDateString } from '../utils';
+import { getGoogleCalendarEventRSVP } from '../googleAuth';
 
 interface DashboardProps {
   tasks: Task[];
@@ -12,6 +13,8 @@ interface DashboardProps {
   userName: string;
   onTriggerToast?: (msg: string) => void;
   onDateChange?: (date: string) => void;
+  googleToken?: string | null;
+  onUpdateTask?: (task: Task) => void;
 }
 
 export default function Dashboard({
@@ -22,10 +25,45 @@ export default function Dashboard({
   onViewTasksTab,
   userName,
   onTriggerToast,
-  onDateChange
+  onDateChange,
+  googleToken,
+  onUpdateTask
 }: DashboardProps) {
   const todayStr = getTodayDateString();
   const [showWeeklyCompromissos, setShowWeeklyCompromissos] = React.useState(false);
+  const [checkingRsvpId, setCheckingRsvpId] = React.useState<string | null>(null);
+
+  const handleCheckRSVP = async (task: Task) => {
+    if (!googleToken || !task.googleEventId || !task.email) return;
+    setCheckingRsvpId(task.id);
+    try {
+      const rsvpData = await getGoogleCalendarEventRSVP(googleToken, task.googleEventId, task.email);
+      if (rsvpData && onUpdateTask) {
+        let updatedStatus = task.status;
+        if (rsvpData.rsvpStatus === 'accepted' && task.status === 'Pendente') {
+          updatedStatus = 'Em Progresso';
+        } else if (rsvpData.rsvpStatus === 'declined' && task.status === 'Em Progresso') {
+          updatedStatus = 'Pendente';
+        }
+        onUpdateTask({
+          ...task,
+          rsvpStatus: rsvpData.rsvpStatus,
+          googleMeetLink: rsvpData.hangoutLink || task.googleMeetLink,
+          status: updatedStatus
+        });
+        if (onTriggerToast) {
+          onTriggerToast('Resposta sincronizada com sucesso!');
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (onTriggerToast) {
+        onTriggerToast('Erro ao obter status do RSVP.');
+      }
+    } finally {
+      setCheckingRsvpId(null);
+    }
+  };
 
   // Use activeDate from global state as the selected dashboard view date, fallback to todayStr
   const dashboardDate = activeDate || todayStr;
@@ -231,6 +269,12 @@ export default function Dashboard({
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-gray-300 font-mono border border-white/5">
                           {task.category}
                         </span>
+                        {task.googleEventId && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#2DD4BF]/10 text-[#2DD4BF] font-semibold font-mono border border-[#2DD4BF]/25 flex items-center gap-1">
+                            <span className="w-1 h-1 bg-[#2DD4BF] rounded-full animate-pulse" />
+                            Sincronizado
+                          </span>
+                        )}
                       </div>
                       
                       <h4 className={`font-semibold text-sm mt-1.5 text-white ${
@@ -240,17 +284,67 @@ export default function Dashboard({
                       </h4>
 
                       {task.category === 'Agendamento' && (
-                        <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                          {task.time && (
-                            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#2DD4BF] bg-[#2DD4BF]/10 px-2.5 py-0.5 rounded-full border border-[#2DD4BF]/25 font-mono">
-                              <Clock size={11} className="shrink-0" />
-                              {task.time}
-                            </span>
+                        <div className="space-y-1.5 mt-1.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {task.time && (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#2DD4BF] bg-[#2DD4BF]/10 px-2.5 py-0.5 rounded-full border border-[#2DD4BF]/25 font-mono">
+                                <Clock size={11} className="shrink-0" />
+                                {task.time}
+                              </span>
+                            )}
+                            {task.email && (
+                              <p className="text-xs text-gray-300 font-mono">
+                                E-mail: {task.email}
+                              </p>
+                            )}
+                          </div>
+
+                          {task.googleMeetLink && (
+                            <div className="pt-0.5">
+                              <a
+                                href={task.googleMeetLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[#2DD4BF] bg-[#2DD4BF]/10 px-2.5 py-0.5 rounded-xl border border-[#2DD4BF]/30 hover:bg-[#2DD4BF]/20 transition mt-1 cursor-pointer"
+                              >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                <span>Entrar no Google Meet</span>
+                              </a>
+                            </div>
                           )}
-                          {task.email && (
-                            <p className="text-xs text-gray-300 font-mono">
-                              E-mail: {task.email}
-                            </p>
+
+                          {task.googleEventId && task.email && (
+                            <div className="flex items-center gap-2 pt-0.5">
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium border flex items-center gap-1 ${
+                                task.rsvpStatus === 'accepted'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+                                  : task.rsvpStatus === 'declined'
+                                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/25'
+                                  : task.rsvpStatus === 'tentative'
+                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/25'
+                                  : 'bg-white/5 text-gray-400 border-white/5'
+                              }`}>
+                                RSVP: {
+                                  task.rsvpStatus === 'accepted' ? 'Confirmado ✔' :
+                                  task.rsvpStatus === 'declined' ? 'Recusado ✖' :
+                                  task.rsvpStatus === 'tentative' ? 'Talvez ⌛' :
+                                  'Sem resposta ✉'
+                                }
+                              </span>
+                              {googleToken && (
+                                <button
+                                  onClick={() => handleCheckRSVP(task)}
+                                  disabled={checkingRsvpId === task.id}
+                                  className="text-[9px] text-[#2DD4BF] hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                  title="Atualizar resposta do paciente"
+                                >
+                                  <RefreshCw size={9} className={checkingRsvpId === task.id ? "animate-spin" : ""} />
+                                  Verificar Resposta
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
@@ -369,6 +463,29 @@ export default function Dashboard({
                                   <span className="ml-2 text-[9px] text-gray-400 font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
                                     {task.category}
                                   </span>
+                                  {task.googleEventId && (
+                                    <span className="ml-1 text-[8px] px-1 py-[1px] bg-[#2DD4BF]/10 text-[#2DD4BF] border border-[#2DD4BF]/20 rounded font-mono">
+                                      Sinc
+                                    </span>
+                                  )}
+                                  {task.category === 'Agendamento' && task.rsvpStatus && (
+                                    <span className={`ml-1.5 text-[9px] font-mono px-1.5 py-0.5 border rounded ${
+                                      task.rsvpStatus === 'accepted'
+                                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                        : task.rsvpStatus === 'declined'
+                                        ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                        : task.rsvpStatus === 'tentative'
+                                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                        : 'bg-white/5 text-gray-400 border-white/5'
+                                    }`}>
+                                      RSVP: {
+                                        task.rsvpStatus === 'accepted' ? 'Confirmado ✔' :
+                                        task.rsvpStatus === 'declined' ? 'Recusado ✖' :
+                                        task.rsvpStatus === 'tentative' ? 'Talvez ⌛' :
+                                        'Sem resposta ✉'
+                                      }
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
