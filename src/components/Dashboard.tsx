@@ -132,20 +132,14 @@ export default function Dashboard({
     return `${day} ${monthName}`;
   };
 
-  // Mapeamento de prioridades para ordenação de importância (Alta -> 1, Média -> 2, Baixa -> 3)
-  const priorityOrder: Record<string, number> = {
-    'Alta': 1,
-    'Média': 2,
-    'Baixa': 3
-  };
-
-  // Filtra as tarefas do dia selecionado e ordena por importância
+  // Filtra as tarefas do dia selecionado e ordena cronologicamente por hora (agendamentos primeiro), depois por criação
   const todayTasks = tasks
     .filter(t => t.date === dashboardDate)
     .sort((a, b) => {
-      const pA = priorityOrder[a.priority] || 4;
-      const pB = priorityOrder[b.priority] || 4;
-      return pA - pB;
+      const timeA = a.time || '23:59';
+      const timeB = b.time || '23:59';
+      if (timeA !== timeB) return timeA.localeCompare(timeB);
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
 
   return (
@@ -257,15 +251,6 @@ export default function Dashboard({
                     
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-2">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium ${
-                          task.priority === 'Alta' 
-                            ? 'bg-rose-500/10 text-rose-400' 
-                            : task.priority === 'Média'
-                            ? 'bg-amber-500/10 text-amber-400'
-                            : 'bg-emerald-500/10 text-emerald-400'
-                        }`}>
-                          {task.priority}
-                        </span>
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-gray-300 font-mono border border-white/5">
                           {task.category}
                         </span>
@@ -404,9 +389,7 @@ export default function Dashboard({
                       const timeA = a.time || '23:59';
                       const timeB = b.time || '23:59';
                       if (timeA !== timeB) return timeA.localeCompare(timeB);
-                      const pA = priorityOrder[a.priority] || 4;
-                      const pB = priorityOrder[b.priority] || 4;
-                      return pA - pB;
+                      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
                     });
 
                   return (

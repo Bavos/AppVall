@@ -640,21 +640,7 @@ export default function TaskCenter({
                       </div>
                     )}
 
-                    {/* Outros Ajustes (Prioridade) */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-gray-300 uppercase tracking-widest font-bold mb-1.5 block">Prioridade</label>
-                        <select
-                          value={editPriority}
-                          onChange={(e) => setEditPriority(e.target.value as Priority || 'Baixa')}
-                          className="w-full bg-neutral-900 border border-white/10 rounded-2xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-[#2DD4BF] min-h-[48px] cursor-pointer"
-                        >
-                          <option value="Alta">Alta</option>
-                          <option value="Média">Média</option>
-                          <option value="Baixa">Baixa</option>
-                        </select>
-                      </div>
-                    </div>
+                    {/* Estimativa de Tempo de Foco */}
 
                     <div className="flex justify-between items-center pt-3 border-t border-white/5">
                       <div className="flex items-center space-x-2 text-sm text-gray-300">
@@ -705,15 +691,6 @@ export default function TaskCenter({
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono ${
-                            task.priority === 'Alta' 
-                              ? 'bg-rose-500/10 text-rose-400 font-bold' 
-                              : task.priority === 'Média'
-                              ? 'bg-amber-500/10 text-amber-400'
-                              : 'bg-emerald-500/10 text-emerald-400'
-                          }`}>
-                            {task.priority}
-                          </span>
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-300 font-mono border border-white/5">
                             {task.category}
                           </span>
@@ -860,15 +837,6 @@ export default function TaskCenter({
                     <div className="flex items-start space-x-3 flex-1 min-w-0">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono ${
-                            task.priority === 'Alta' 
-                              ? 'bg-rose-500/10 text-rose-400 font-bold' 
-                              : task.priority === 'Média'
-                              ? 'bg-amber-500/10 text-amber-400'
-                              : 'bg-emerald-500/10 text-emerald-400'
-                          }`}>
-                            {task.priority}
-                          </span>
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-300 font-mono border border-white/5">
                             {task.category}
                           </span>

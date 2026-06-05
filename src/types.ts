@@ -8,7 +8,7 @@ export interface Task {
   description?: string;
   date: string; // YYYY-MM-DD
   category: TaskCategory;
-  priority: Priority;
+  priority?: Priority;
   status: TaskStatus;
   estimatedMinutes: number;
   actualMinutes: number;

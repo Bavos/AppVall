@@ -214,12 +214,11 @@ export default function RelatorioUI({ tasks, userName, onTriggerToast, defaultOp
           doc.setTextColor(255, 255, 255); // White Text
 
           // Nomes de coluna e posições relativas
-          // Total = 20(Data) + 14(Hora) + 75(Compromisso) + 26(Tipo) + 25(Prioridade) + 20(Status) = 180mm
+          // Total = 20(Data) + 14(Hora) + 90(Compromisso) + 36(Tipo) + 20(Status) = 180mm
           doc.text('DATA', marginL + 2, startY + 5.5);
           doc.text('HORA', marginL + 22, startY + 5.5);
           doc.text('COMPROMISSO / DETALHES', marginL + 36, startY + 5.5);
-          doc.text('TIPO', marginL + 111, startY + 5.5);
-          doc.text('PRIORIDADE', marginL + 137, startY + 5.5);
+          doc.text('TIPO', marginL + 126, startY + 5.5);
           doc.text('STATUS', marginL + 162, startY + 5.5);
         };
 
@@ -287,25 +286,13 @@ export default function RelatorioUI({ tasks, userName, onTriggerToast, defaultOp
               ? `Profissional: ${task.title}`
               : task.title;
 
-          // Limitar tamanho de string do título para que caiba na coluna perfeitamente
+           // Limitar tamanho de string do título para que caiba na coluna perfeitamente (coluna mais larga)
           const trimmedTitle =
-            formattedTitle.length > 40 ? formattedTitle.substring(0, 37) + '...' : formattedTitle;
+            formattedTitle.length > 55 ? formattedTitle.substring(0, 52) + '...' : formattedTitle;
           doc.text(trimmedTitle, marginL + 36, currentY + 5.5);
 
           // Tipo (Categoria)
-          doc.text(task.category, marginL + 111, currentY + 5.5);
-
-          // Prioridade com estilização de cor
-          const priority = task.priority || 'Média';
-          doc.setFont('helvetica', 'bold');
-          if (priority === 'Alta') {
-            doc.setTextColor(225, 29, 72); // rose-600
-          } else if (priority === 'Média') {
-            doc.setTextColor(217, 119, 6); // amber-600
-          } else {
-            doc.setTextColor(5, 150, 105); // emerald-600
-          }
-          doc.text(priority, marginL + 137, currentY + 5.5);
+          doc.text(task.category, marginL + 126, currentY + 5.5);
 
           // Status
           doc.setFont('helvetica', 'normal');

@@ -208,7 +208,7 @@ export const createGoogleCalendarEvent = async (
     date: string; // YYYY-MM-DD
     time?: string; // HH:MM
     category: string;
-    priority: string;
+    priority?: string;
     estimatedMinutes?: number;
     email?: string; // Target email to receive RSVP invite
   }
@@ -240,13 +240,13 @@ export const createGoogleCalendarEvent = async (
     
     // Setup attendees if email is provided
     const attendees = eventData.email ? [{ email: eventData.email }] : [];
-
+ 
     // Create a random unique request ID for generating Google Meet
     const requestId = `vall_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
+ 
     const body: any = {
       summary: `${eventData.title} [VALL]`,
-      description: `${eventData.description || 'Nenhuma descrição fornecida.'}\n\n---\nCategoria: ${eventData.category}\nPrioridade: ${eventData.priority}\nCriado via Sistema de Gestão VALL`,
+      description: `${eventData.description || 'Nenhuma descrição fornecida.'}\n\n---\nCategoria: ${eventData.category}${eventData.priority ? `\nPrioridade: ${eventData.priority}` : ''}\nCriado via Sistema de Gestão VALL`,
       start,
       end,
       reminders: {

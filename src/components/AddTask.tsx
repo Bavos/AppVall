@@ -27,7 +27,6 @@ export default function AddTask({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<TaskCategory>('Agendamento');
-  const [priority, setPriority] = useState<Priority>('Média');
   const [date, setDate] = useState(activeDate);
   const [estimatedMinutes, setEstimatedMinutes] = useState(25);
   const [alertSuccess, setAlertSuccess] = useState(false);
@@ -42,7 +41,6 @@ export default function AddTask({
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const categories: TaskCategory[] = ['Agendamento', 'Curinga', 'Disponível', 'Notas'];
-  const priorities: Priority[] = ['Baixa', 'Média', 'Alta'];
   const presetMinutes = [15, 25, 45, 60, 90];
 
   const isSubmittingRef = React.useRef(false);
@@ -75,7 +73,7 @@ export default function AddTask({
             date,
             time: time ? time : undefined,
             category,
-            priority,
+            priority: 'Média',
             estimatedMinutes,
             email: email ? email.trim() : undefined
           });
@@ -96,7 +94,7 @@ export default function AddTask({
         title: title.trim(),
         description: category === 'Notas' ? description.trim() : undefined,
         category,
-        priority,
+        priority: 'Média',
         status, // Pass custom status
         date,
         time: category === 'Agendamento' && time ? time : undefined,
@@ -111,12 +109,6 @@ export default function AddTask({
       setLastCreated({ title: title.trim(), category });
       setAlertSuccess(true);
       
-      // Rola o container principal de volta ao topo de forma suave para mostrar o Alerta Verde
-      const mainContent = document.getElementById('app_main_content');
-      if (mainContent) {
-        mainContent.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-
       setTitle('');
       setDescription('');
       setEmail('');
@@ -128,11 +120,9 @@ export default function AddTask({
         setLastCreated(null);
         onChangeTab('dashboard'); // Redireciona para o Painel Geral para ver a lista atualizada
         isSubmittingRef.current = false;
-      }, 2200);
+      }, 2500);
     } catch (err) {
       console.error('Error during submit:', err);
-      // Se deu erro, isSubmittingRef é liberado para que o usuário possa tentar novamente ou relatar o problema.
-      // O App.tsx já disparou o Toast de erro na tela.
       isSubmittingRef.current = false;
     }
   };
@@ -147,26 +137,35 @@ export default function AddTask({
         <p className="text-gray-300 text-sm">Inscreva uma nova atividade operacional</p>
       </section>
 
-      {/* ALERTA DE SUCESSO COESIVO E DINÂMICO */}
+      {/* OVERLAY DE SUCESSO COESIVO, DIRETINHO E IMPOSSÍVEL DE PERDER (FIXED CENTERED MODAL) */}
       {alertSuccess && lastCreated && (
-        <div className="mx-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-2xl flex items-center gap-3 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
-          <CheckCircle size={20} className="text-[#2DD4BF] shrink-0" />
-          <div>
-            <div className="font-bold text-sm text-white">Adicionado com Sucesso!</div>
-            <div className="text-xs opacity-90 text-gray-200 mt-1">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-[#0b1329] border border-emerald-500/30 text-emerald-400 p-6 rounded-3xl max-w-sm w-full flex flex-col items-center text-center shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center text-[#2DD4BF] mb-4 border border-emerald-500/20">
+              <CheckCircle size={36} className="animate-bounce" />
+            </div>
+            
+            <h3 className="text-xl font-bold text-white mb-2">Salvo com Sucesso!</h3>
+            
+            <p className="text-xs text-gray-300 px-2 leading-relaxed">
               {lastCreated.category === 'Agendamento' && (
-                <span>O agendamento de <strong className="text-white">"{lastCreated.title}"</strong> foi gerado e integrado ao cronograma.</span>
+                <span>O agendamento de <strong className="text-white">"{lastCreated.title}"</strong> foi totalmente gerado, gravado e sincronizado no cronograma diário.</span>
               )}
               {lastCreated.category === 'Disponível' && (
-                <span>A disponibilidade da profissional <strong className="text-white">"{lastCreated.title}"</strong> foi registrada.</span>
+                <span>A disponibilidade da profissional <strong className="text-white">"{lastCreated.title}"</strong> foi registrada sob o dia selecionado.</span>
               )}
               {lastCreated.category === 'Curinga' && (
                 <span>O paciente Curinga <strong className="text-white">"{lastCreated.title}"</strong> foi adicionado com sucesso.</span>
               )}
               {lastCreated.category === 'Notas' && (
-                <span>A anotação <strong className="text-white">"{lastCreated.title}"</strong> foi guardada no repositório.</span>
+                <span>A anotação <strong className="text-white">"{lastCreated.title}"</strong> foi registrada de forma segura no histórico.</span>
               )}
+            </p>
+            
+            <div className="mt-5 w-full bg-white/5 h-1 rounded-full overflow-hidden">
+              <div className="bg-[#2DD4BF] h-full rounded-full animate-[progress_2.4s_linear]" style={{ width: '100%' }}></div>
             </div>
+            <span className="text-[9px] text-gray-500 mt-2 font-mono">Redirecionando para as Tarefas...</span>
           </div>
         </div>
       )}
@@ -344,38 +343,6 @@ export default function AddTask({
               onChange={(e) => setDate(e.target.value)}
               className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 cursor-pointer py-2"
             />
-          </div>
-        </div>
-
-        {/* Escolha da Prioridade */}
-        <div className="space-y-2">
-          <label className="text-gray-300 text-xs font-bold tracking-widest uppercase block mb-1">
-            Nível de Prioridade
-          </label>
-          <div className="grid grid-cols-3 gap-3">
-            {priorities.map((prio) => {
-              const isSelected = priority === prio;
-              let activeClass = '';
-
-              if (isSelected) {
-                if (prio === 'Alta') activeClass = 'bg-rose-500/15 border-rose-500 text-rose-400 font-bold shadow-[0_0_12px_rgba(244,63,94,0.15)]';
-                else if (prio === 'Média') activeClass = 'bg-amber-500/15 border-amber-500 text-amber-400 font-bold shadow-[0_0_12px_rgba(245,158,11,0.15)]';
-                else activeClass = 'bg-emerald-500/15 border-emerald-500 text-emerald-400 font-bold shadow-[0_0_12px_rgba(16,185,129,0.15)]';
-              }
-
-              return (
-                <button
-                  type="button"
-                  key={prio}
-                  onClick={() => setPriority(prio)}
-                  className={`py-3.5 rounded-2xl text-sm font-semibold border transition text-center cursor-pointer active:scale-95 min-h-[44px] flex items-center justify-center ${
-                    isSelected ? activeClass : 'bg-white/5 border-white/5 text-gray-300 hover:border-white/10 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  {prio}
-                </button>
-              );
-            })}
           </div>
         </div>
 
