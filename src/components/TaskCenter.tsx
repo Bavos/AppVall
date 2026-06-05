@@ -839,9 +839,65 @@ export default function TaskCenter({
             ))}
           </div>
         )}
+
+        {/* LISTA DE OUTRAS TAREFAS */}
+        {searchTerm && otherTasks.length > 0 && (
+          <div className="mt-8 pt-4 border-t border-white/10">
+            <h4 className="font-extrabold text-[10px] uppercase tracking-widest text-[#2DD4BF] mb-3">
+              Outras Tarefas Encontra das (Outras Datas)
+            </h4>
+            <div className="space-y-3">
+              {otherTasks.map((task) => (
+                <div 
+                  key={task.id}
+                  className={`glass border border-white/10 rounded-2xl p-4 transition-all duration-200 hover:border-white/20 hover:bg-white/5 opacity-80 ${
+                    task.status === 'Concluída' 
+                      ? 'opacity-40 bg-white/[0.01]' 
+                      : ''
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-3 flex-1 min-w-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2">
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono ${
+                            task.priority === 'Alta' 
+                              ? 'bg-rose-500/10 text-rose-400 font-bold' 
+                              : task.priority === 'Média'
+                              ? 'bg-amber-500/10 text-amber-400'
+                              : 'bg-emerald-500/10 text-emerald-400'
+                          }`}>
+                            {task.priority}
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/5 text-gray-300 font-mono border border-white/5">
+                            {task.category}
+                          </span>
+                        </div>
+
+                        <h4 className={`font-semibold text-sm mt-1 text-white ${
+                          task.status === 'Concluída' ? 'line-through text-gray-400' : ''
+                        }`}>
+                          {task.category === 'Curinga' ? `Paciente: ${task.title}` : task.category === 'Disponível' ? `Profissional: ${task.title}` : task.title}
+                        </h4>
+                        
+                        <button
+                          className="mt-2 text-[10px] text-[#2DD4BF] font-bold tracking-wider uppercase flex items-center gap-1 hover:underline cursor-pointer"
+                          onClick={() => setActiveDate(task.date)}
+                        >
+                          Ir para o dia {task.date.split('-').reverse().join('/')} ➔
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Modal de Confirmação de Exclusão */}
+
       {taskDeleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop com desfoque de fundo */}
