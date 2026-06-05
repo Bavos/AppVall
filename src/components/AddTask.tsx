@@ -5,7 +5,7 @@ import { createGoogleCalendarEvent } from '../googleAuth';
 
 interface AddTaskProps {
   activeDate: string;
-  onAddTask: (task: Omit<Task, 'id' | 'createdAt' | 'status' | 'actualMinutes'> & { status?: TaskStatus }) => void;
+  onAddTask: (task: Omit<Task, 'id' | 'createdAt' | 'status' | 'actualMinutes'> & { status?: TaskStatus }) => Promise<void> | void;
   onChangeTab: (tab: 'dashboard' | 'tasks' | 'add' | 'timer') => void;
   googleUser: any;
   googleToken: string | null;
@@ -89,7 +89,7 @@ export default function AddTask({
         }
       }
 
-      onAddTask({
+      await onAddTask({
         title: title.trim(),
         description: category === 'Notas' ? description.trim() : undefined,
         category,
@@ -119,6 +119,8 @@ export default function AddTask({
       }, 2000);
     } catch (err) {
       console.error('Error during submit:', err);
+      // Se deu erro, isSubmittingRef é liberado para que o usuário possa tentar novamente ou relatar o problema.
+      // O App.tsx já disparou o Toast de erro na tela.
       isSubmittingRef.current = false;
     }
   };

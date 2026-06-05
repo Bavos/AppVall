@@ -36,8 +36,8 @@ service cloud.firestore {
         && data.userEmail is string && data.userEmail.size() <= 100
         && (!('adminEmail' in data) || (data.adminEmail is string && data.adminEmail.size() <= 150))
         && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
-        && (!('estimatedMinutes' in data) || data.estimatedMinutes is int)
-        && (!('actualMinutes' in data) || data.actualMinutes is int)
+        && (!('estimatedMinutes' in data) || data.estimatedMinutes is number)
+        && (!('actualMinutes' in data) || data.actualMinutes is number)
         && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50))
         && (!('googleEventId' in data) || (data.googleEventId is string && data.googleEventId.size() <= 256))
         && (!('googleEventLink' in data) || (data.googleEventLink is string && data.googleEventLink.size() <= 1024))
@@ -45,7 +45,7 @@ service cloud.firestore {
         && (!('rsvpStatus' in data) || (data.rsvpStatus is string && (data.rsvpStatus == 'accepted' || data.rsvpStatus == 'declined' || data.rsvpStatus == 'tentative' || data.rsvpStatus == 'needsAction')))
         && (!('email' in data) || (data.email is string && data.email.size() <= 150))
         && (!('time' in data) || (data.time is string && data.time.size() <= 10))
-        && (!('notificationLeadTime' in data) || data.notificationLeadTime is int)
+        && (!('notificationLeadTime' in data) || data.notificationLeadTime is number)
         && (!('notificationSent' in data) || data.notificationSent is bool);
     }
 
@@ -65,10 +65,10 @@ service cloud.firestore {
     match /tasks/{taskId} {
       allow get, list: if isSignedIn() 
         && (
-          resource.data.userEmail == request.auth.token.email.lower()
+          resource.data.userEmail == request.auth.token.email
           || (
-            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
-            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
           )
         );
       
@@ -76,10 +76,10 @@ service cloud.firestore {
         && isValidId(taskId)
         && isValidTask(request.resource.data)
         && (
-          request.resource.data.userEmail == request.auth.token.email.lower()
+          request.resource.data.userEmail == request.auth.token.email
           || (
-            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
-            && request.resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && request.resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
           )
         );
         
@@ -87,22 +87,22 @@ service cloud.firestore {
         && isValidTask(request.resource.data)
         && (
           (
-            resource.data.userEmail == request.auth.token.email.lower()
-            && request.resource.data.userEmail == request.auth.token.email.lower()
+            resource.data.userEmail == request.auth.token.email
+            && request.resource.data.userEmail == request.auth.token.email
           )
           || (
-            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
-            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
             && request.resource.data.adminEmail == resource.data.adminEmail
           )
         );
         
       allow delete: if isSignedIn()
         && (
-          resource.data.userEmail == request.auth.token.email.lower()
+          resource.data.userEmail == request.auth.token.email
           || (
-            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
-            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
           )
         );
     }
@@ -111,20 +111,20 @@ service cloud.firestore {
     match /user_profiles/{email} {
       allow get: if isSignedIn()
         && (
-          email == request.auth.token.email.lower()
+          email == request.auth.token.email
           || (
-            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
             && exists(/databases/$(database)/documents/user_profiles/$(email))
-            && get(/databases/$(database)/documents/user_profiles/$(email)).data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+            && get(/databases/$(database)/documents/user_profiles/$(email)).data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
           )
         );
 
       allow list: if isSignedIn()
         && (
-          email == request.auth.token.email.lower()
+          email == request.auth.token.email
           || (
-            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
-            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.adminEmail
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
           )
         );
 
@@ -133,13 +133,13 @@ service cloud.firestore {
         && isValidUserProfile(request.resource.data)
         && (
           // Creating own profile as admin
-          (email == request.auth.token.email.lower() && request.resource.data.role == 'admin')
+          (email == request.auth.token.email && request.resource.data.role == 'admin')
           // Or registered as member by group's admin
           || (
-            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
-            && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.role == 'admin'
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.role == 'admin'
             && request.resource.data.role == 'member'
-            && request.resource.data.adminEmail == request.auth.token.email.lower()
+            && request.resource.data.adminEmail == request.auth.token.email
           )
         );
 
@@ -147,12 +147,12 @@ service cloud.firestore {
         && isValidUserProfile(request.resource.data)
         && (
           // Personal update (e.g. password or name change)
-          (email == request.auth.token.email.lower() && request.resource.data.role == resource.data.role && request.resource.data.adminEmail == resource.data.adminEmail)
+          (email == request.auth.token.email && request.resource.data.role == resource.data.role && request.resource.data.adminEmail == resource.data.adminEmail)
           // Or updated by admin
           || (
-            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
-            && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.role == 'admin'
-            && resource.data.adminEmail == request.auth.token.email.lower()
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.role == 'admin'
+            && resource.data.adminEmail == request.auth.token.email
             && request.resource.data.role == resource.data.role
             && request.resource.data.adminEmail == resource.data.adminEmail
           )
@@ -162,10 +162,10 @@ service cloud.firestore {
         && (
           // Admin deleting a member of their team
           (
-            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower()))
-            && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email.lower())).data.role == 'admin'
-            && resource.data.adminEmail == request.auth.token.email.lower()
-            && email != request.auth.token.email.lower()
+            exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.role == 'admin'
+            && resource.data.adminEmail == request.auth.token.email
+            && email != request.auth.token.email
           )
         );
     }

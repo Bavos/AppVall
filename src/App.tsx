@@ -572,6 +572,7 @@ export default function App() {
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `tasks/${taskId}`);
         triggerToast('Erro ao agendar nova tarefa no banco.');
+        throw error;
       }
     } else {
       triggerToast('Nova tarefa agendada');
