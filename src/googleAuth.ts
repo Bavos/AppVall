@@ -112,14 +112,31 @@ export const initAuth = (
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
   try {
     isSigningIn = true;
+    console.log('[Auth] Iniciando googleSignIn...');
+    console.log('[Auth] Configurações de Firebase carregadas:', {
+      projectId: firebaseConfig.projectId,
+      authDomain: firebaseConfig.authDomain,
+      appId: firebaseConfig.appId,
+    });
+    console.log('[Auth] Provedor de autenticação configurado:', provider.providerId);
+    console.log('[Auth] Escopos solicitados adicionais:', provider.getScopes());
+
     const result = await signInWithPopup(auth, provider);
+    console.log('[Auth] signInWithPopup retornado com sucesso para usuário:', {
+      uid: result.user?.uid,
+      email: result.user?.email,
+      displayName: result.user?.displayName,
+    });
+
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
+      console.warn('[Auth] Falha crítica: Não foi possível extrair o accessToken do Google credentialFromResult.');
       throw new Error('Não foi possível obter o token de acesso do Google.');
     }
 
     cachedAccessToken = credential.accessToken;
     localStorage.setItem('vall_google_token', cachedAccessToken);
+    console.log('[Auth] Token de acesso obtido com sucesso e persistido sob a chave "vall_google_token".');
     
     if (result.user.email) {
       localStorage.setItem('vall_google_email', result.user.email);
@@ -130,7 +147,12 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.error('Erro na autenticação do Google:', error);
+    console.error('[Auth] Erro detectado no processo de autenticação do Google:', error);
+    console.error('[Auth] Detalhes descritivos do erro:', {
+      code: error?.code,
+      message: error?.message,
+      email: error?.customData?.email,
+    });
     throw error;
   } finally {
     isSigningIn = false;

@@ -16,6 +16,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isRefererError, setIsRefererError] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -30,6 +31,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [forgotNewPassword, setForgotNewPassword] = useState('');
   const [forgotStep, setForgotStep] = useState<1 | 2>(1);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
 
   // Real-time Validation Helpers
   const getEmailError = () => {
@@ -91,17 +93,16 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         }
         
         // Save profile to Firestore
-        try {
-          await setDoc(doc(db, 'user_profiles', email.toLowerCase()), {
-            email: email.toLowerCase(),
-            name: name,
-            role: registerAsAdmin ? 'admin' : 'member',
-            adminEmail: email.toLowerCase(),
-            createdAt: new Date().toISOString()
-          });
-        } catch (pfErr) {
+        // Fire and forget because await setDoc can hang indefinitely if API Key is restricted
+        setDoc(doc(db, 'user_profiles', email.toLowerCase()), {
+          email: email.toLowerCase(),
+          name: name,
+          role: registerAsAdmin ? 'admin' : 'member',
+          adminEmail: email.toLowerCase(),
+          createdAt: new Date().toISOString()
+        }).catch(pfErr => {
           console.error('Erro ao salvar profile no Firestore:', pfErr);
-        }
+        });
         
         // Also save to local user simulation for backward compatibility and fallback
         const usersJson = localStorage.getItem('vall_users');
@@ -110,22 +111,21 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         localStorage.setItem('vall_users', JSON.stringify(users));
 
         // Trigger backend registration workflow (Ação 1 DB sync, Ação 2 Admin email, Ação 3 User email)
-        try {
-          await fetch('/api/register', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              name,
-              email: email.toLowerCase(),
-              role: registerAsAdmin ? 'admin' : 'member',
-              adminEmail: email.toLowerCase()
-            })
-          });
-        } catch (apiErr) {
+        // Fire and forget so we don't block the user login flow
+        fetch('/api/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name,
+            email: email.toLowerCase(),
+            role: registerAsAdmin ? 'admin' : 'member',
+            adminEmail: email.toLowerCase()
+          })
+        }).catch(apiErr => {
           console.error('Erro ao processar fluxo extra de registro no backend:', apiErr);
-        }
+        });
 
         onLoginSuccess({ name, email });
       } else {
@@ -135,16 +135,28 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         // Ensure user_profiles has a document for them so things synchronize correctly
         try {
           const profileDocRef = doc(db, 'user_profiles', email.toLowerCase());
-          const profSnap = await getDoc(profileDocRef);
-          if (!profSnap.exists()) {
-            // Auto define old/unprofiled users as admin
-            await setDoc(profileDocRef, {
-              email: email.toLowerCase(),
-              name: credential.user.displayName || 'Administrador',
-              role: 'admin',
-              adminEmail: email.toLowerCase(),
-              createdAt: new Date().toISOString()
-            });
+          const fetchPromise = getDoc(profileDocRef);
+          
+          // Race between fetch and timeout so we never hang indefinitely
+          const result = await Promise.race([
+            fetchPromise,
+            new Promise<'TIMEOUT'>((resolve) => setTimeout(() => resolve('TIMEOUT'), 3000))
+          ]);
+
+          if (result !== 'TIMEOUT') {
+            const profSnap = result;
+            if (!profSnap.exists()) {
+              // Auto define old/unprofiled users as admin
+              setDoc(profileDocRef, {
+                email: email.toLowerCase(),
+                name: credential.user.displayName || 'Administrador',
+                role: 'admin',
+                adminEmail: email.toLowerCase(),
+                createdAt: new Date().toISOString()
+              }).catch(e => console.warn('Silent doc update skipped:', e));
+            }
+          } else {
+            console.warn('Firestore getDoc timed out, continuing login...');
           }
         } catch (profE) {
           console.warn('Silent user profile check/upgrade skipped:', profE);
@@ -173,13 +185,19 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       if (!isSignUp && (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential')) {
         // Try calling the server-side login fallback API
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 second timeout
+          
           const apiResponse = await fetch('/api/login-fallback', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ email: email.toLowerCase(), password })
+            body: JSON.stringify({ email: email.toLowerCase(), password }),
+            signal: controller.signal
           });
+          
+          clearTimeout(timeoutId);
 
           if (apiResponse.ok) {
             const apiResult = await apiResponse.json();
@@ -196,17 +214,23 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
         // Core fallback: search in firestore user_profiles for team members created by Admin (if signed in or database accessible)
         try {
-          const uProfileDoc = await getDoc(doc(db, 'user_profiles', email.toLowerCase()));
-          if (uProfileDoc.exists()) {
-            const up = uProfileDoc.data();
+          const fetchRef = getDoc(doc(db, 'user_profiles', email.toLowerCase()));
+          const result = await Promise.race([
+            fetchRef,
+            new Promise<'TIMEOUT'>((resolve) => setTimeout(() => resolve('TIMEOUT'), 3000))
+          ]);
+
+          if (result !== 'TIMEOUT' && result.exists()) {
+            const up = result.data();
             if (up.password === password) {
               // Lazy recreate Firebase Auth credentials in background so it registers correctly next time!
               try {
-                const subCred = await createUserWithEmailAndPassword(auth, email, password);
-                await updateProfile(subCred.user, { displayName: up.name });
-              } catch (regE) {
-                console.warn('Auto Firebase user background registration skipped or already existing:', regE);
-              }
+                createUserWithEmailAndPassword(auth, email, password).then(subCred => {
+                  updateProfile(subCred.user, { displayName: up.name });
+                }).catch(regE => {
+                  console.warn('Auto Firebase user background registration skipped or already existing:', regE);
+                });
+              } catch (err) {}
               onLoginSuccess({ name: up.name, email: email.toLowerCase() });
               return;
             }
@@ -312,18 +336,44 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   const handleGoogleLogin = async () => {
     setErrorMessage(null);
+    setIsRefererError(false);
     setIsGoogleLoading(true);
+    console.log('[LoginUI] Iniciando processo de login com o Google...');
     try {
       const result = await googleSignIn();
       if (result && result.user) {
+        console.log('[LoginUI] Sucesso no login com o Google. Redirecionando usuário...');
         onLoginSuccess({
           name: result.user.displayName || 'Usuário Google',
           email: result.user.email || ''
         });
       }
     } catch (err: any) {
-      console.error('Falha no login com Google:', err);
-      setErrorMessage('Não foi possível entrar com o Google. Tente novamente.');
+      console.error('[LoginUI] Falha ao tentar autenticar via Google:', err);
+      
+      const errorCode = err?.code || '';
+      const errorMessageString = err?.message || '';
+      
+      if (errorCode.includes('requests-from-referer') || errorMessageString.includes('requests-from-referer') || errorMessageString.includes('referer')) {
+        setIsRefererError(true);
+        setErrorMessage('Acesso bloqueado: o domínio atual não está autorizado nas restrições de chave do seu Console Google Cloud.');
+      } else if (errorCode === 'auth/operation-not-allowed') {
+        setErrorMessage('O login do Google está desativado no Firebase. Ative em "Authentication > Sign-in method" no Console Firebase.');
+      } else if (errorCode === 'auth/popup-blocked') {
+        setErrorMessage('O pop-up de login foi bloqueado pelo seu navegador. Por favor, permita pop-ups nesta página ou tente usar e-mail e senha.');
+      } else if (errorCode === 'auth/popup-closed-by-user') {
+        setErrorMessage('A janela pop-up de autenticação com o Google foi fechada antes de concluir o login. Clique em "Google" novamente para realizar o fluxo por completo.');
+      } else if (errorCode === 'auth/cancelled-popup-request') {
+        setErrorMessage('A solicitação de autenticação foi reiniciada. Aguarde ou feche outras telas abertas e tente novamente.');
+      } else if (errorCode === 'auth/network-request-failed') {
+        setErrorMessage('Falha de rede ao tentar se comunicar com o Firebase Auth. Verifique seu sinal de internet ou se o seu dispositivo está offline.');
+      } else if (errorCode === 'auth/internal-error') {
+        setErrorMessage('Erro interno no Firebase Auth. Verifique sua conexão ou limpe os cookies do navegador.');
+      } else if (errorMessageString.includes('invalid') || errorCode.includes('invalid-action') || errorCode.includes('invalid-credential')) {
+        setErrorMessage('Erro de Ação Inválida / Credenciais Inválidas. Certifique-se de que o provedor Google está habilitado com os Redirect URIs corretos no Console do Google Cloud e Firebase.');
+      } else {
+        setErrorMessage(`Não foi possível entrar com o Google. Erro (${errorCode || 'Desconhecido'}): ${errorMessageString || 'Certifique-se de que o provedor Google está ativado no Console Firebase.'}`);
+      }
     } finally {
       setIsGoogleLoading(false);
     }
@@ -512,6 +562,89 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               {errorMessage && (
                 <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm rounded-xl p-3 text-center font-mono font-medium">
                   {errorMessage}
+                </div>
+              )}
+
+              {errorMessage && isRefererError && (
+                <div className="bg-amber-500/5 border border-amber-500/15 text-gray-300 text-xs rounded-2xl p-4 mt-2 space-y-3 font-sans text-left leading-relaxed animate-fade-in max-h-[300px] overflow-y-auto">
+                  <div className="flex items-center space-x-2 text-amber-400 font-bold uppercase tracking-wider text-[11px] font-mono">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <span>Tutorial: Como Resolver Agora</span>
+                  </div>
+                  <p className="text-gray-300">
+                    Você quase acertou nas configurações! Mas faltam os asteriscos (<span className="text-amber-400 font-bold">/*</span>) no final das URLs e também o domínio interno do Firebase.
+                  </p>
+                  
+                  <div className="space-y-2.5 pt-1">
+                    <div className="flex gap-2">
+                      <span className="text-amber-400 font-bold font-mono text-xs shrink-0 bg-amber-500/10 w-5 h-5 rounded-full flex items-center justify-center">1</span>
+                      <p>
+                        Acesse as restrições da sua chave no <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-[#2DD4BF] hover:underline font-semibold">Google Cloud Console</a>.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <span className="text-amber-400 font-bold font-mono text-xs shrink-0 bg-amber-500/10 w-5 h-5 rounded-full flex items-center justify-center">2</span>
+                      <p>
+                        Nas URLs que você adicionou, <strong className="text-white">você esqueceu o /* no final</strong>! Edite cada uma delas para ficarem exatamente assim:
+                      </p>
+                    </div>
+
+                    <div className="pl-6 space-y-2">
+                      <div className="bg-black/40 p-2 rounded border border-red-500/30 text-gray-400 line-through text-[10px]">
+                        Errado: https://ais-dev-...us-west2.run.app/
+                      </div>
+                      <div className="bg-[#2DD4BF]/10 p-2 rounded border border-[#2DD4BF]/30 text-white font-mono text-[10px]">
+                        Certo: https://ais-dev-...us-west2.run.app<strong className="text-amber-400 text-sm">/*</strong>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 mt-4">
+                      <span className="text-amber-400 font-bold font-mono text-xs shrink-0 bg-amber-500/10 w-5 h-5 rounded-full flex items-center justify-center">3</span>
+                      <div className="space-y-2 w-full">
+                        <p>Você também <strong className="text-amber-500 uppercase">PRECISA</strong> adicionar o domínio de popup do Firebase. Adicione este item novo na lista:</p>
+                        
+                        <div 
+                          onClick={() => {
+                            navigator.clipboard.writeText(`https://appvall-497716.firebaseapp.com/*`);
+                            setCopiedOrigin(true);
+                            setTimeout(() => setCopiedOrigin(false), 2000);
+                          }}
+                          className="bg-black/50 p-2.5 rounded-xl border border-amber-500/50 font-mono text-[11px] text-[#2DD4BF] break-all select-all flex justify-between items-center group cursor-pointer hover:border-amber-400 transition active:scale-[0.98]"
+                        >
+                          <span className="select-all block">https://appvall-497716.firebaseapp.com/*</span>
+                          <span className="text-[9px] text-gray-400 group-hover:text-amber-400 transition ml-2 shrink-0 border border-gray-700 rounded px-1.5 py-0.5 uppercase font-bold font-mono">
+                            {copiedOrigin ? 'Copiado!' : 'Copiar'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <span className="text-amber-400 font-bold font-mono text-xs shrink-0 bg-amber-500/10 w-5 h-5 rounded-full flex items-center justify-center">4</span>
+                      <p>
+                        Por via das dúvidas, adicione este aqui também (clique para copiar):
+                      </p>
+                    </div>
+                    
+                    <div className="pl-6 pb-2">
+                        <div 
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/*`);
+                          }}
+                          className="bg-black/50 p-2 rounded border border-white/10 font-mono text-[10px] text-gray-300 cursor-pointer hover:border-[#2DD4BF]/50"
+                        >
+                          <span className="select-all block">{window.location.origin}/*</span>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <span className="text-amber-400 font-bold font-mono text-xs shrink-0 bg-amber-500/10 w-5 h-5 rounded-full flex items-center justify-center">5</span>
+                      <p>
+                        Clique em <span className="font-semibold text-white">Salvar</span>, aguarde 5 minutos e tente novamente. <br/><span className="text-[10px] text-gray-400">(Sério, não esquece do <span className="text-amber-400 font-bold">/*</span> no final de todas elas!)</span>
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
 

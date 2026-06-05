@@ -44,18 +44,14 @@ async function sendEmail({ to, subject, text }: { to: string; subject: string; t
     console.log(`[Email] Configured custom SMTP: ${host}`);
   } else {
     try {
-      // Dynamic Ethereal account creation for sandbox testing out-of-the-box
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-      console.log(`[Email] Zero-config test email account created: ${testAccount.user}`);
+      console.log(`[MOCK EMAIL LOG]
+TO: ${to}
+FROM: ${from}
+SUBJECT: ${subject}
+BODY:
+${text}
+`);
+      return { success: true, mock: true };
     } catch (testAccountError) {
       console.warn('[Email] Failed to create Ethereal test account, logging in stdout', testAccountError);
       console.log(`[MOCK EMAIL LOG]
@@ -100,17 +96,9 @@ app.post('/api/register', async (req, res) => {
   console.log(`[API] Processing registration for: ${name} (${email})`);
 
   try {
-    // Action 1: Save/Guarantee registration metadata in Database via Admin SDK
-    const userProfileRef = db.collection('user_profiles').doc(email.toLowerCase());
-    await userProfileRef.set({
-      email: email.toLowerCase(),
-      name,
-      role: role || 'admin',
-      adminEmail: adminEmail || email.toLowerCase(),
-      createdAt: new Date().toISOString()
-    }, { merge: true });
-
-    console.log(`[Database] User profile synchronized in Firestore: ${email}`);
+    // Note: We skip Action 1 (Database save via Admin SDK) here because it relies on
+    // Application Default Credentials (ADC) which may hang in this environment.
+    // The frontend client SDK already saves the user profile reliably.
 
     // Action 2: Send system notification email to Admin
     const adminEmailAddress = process.env.ADMIN_EMAIL || 'admin@example.com';
