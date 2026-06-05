@@ -45,7 +45,7 @@ export default function ResetPassword({ onBackToLogin }: ResetPasswordProps) {
 
   const getPasswordError = () => {
     if (!newPassword) return 'Por favor, digite sua nova senha.';
-    if (newPassword.length < 4) return 'A senha deve ter pelo menos 4 caracteres.';
+    if (newPassword.length < 6) return 'A senha deve ter pelo menos 6 caracteres.';
     return null;
   };
 
@@ -290,7 +290,7 @@ export default function ResetPassword({ onBackToLogin }: ResetPasswordProps) {
                       type={showNewPassword ? 'text' : 'password'}
                       autoComplete="new-password"
                       disabled={isSubmitting}
-                      placeholder="Nova senha (mín. 4 dgt)"
+                      placeholder="Nova senha (mín. 6 dgt)"
                       value={newPassword}
                       onChange={(e) => {
                         setNewPassword(e.target.value);

@@ -147,6 +147,57 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+// Advanced API for credentials fallback and auto Firebase Auth synchronization
+app.post('/api/login-fallback', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  try {
+    const emailLower = email.toLowerCase().trim();
+    const userProfileRef = db.collection('user_profiles').doc(emailLower);
+    const docSnap = await userProfileRef.get();
+
+    if (!docSnap.exists) {
+      return res.status(404).json({ error: 'User profile not found.' });
+    }
+
+    const profileData = docSnap.data();
+    if (!profileData || profileData.password !== password) {
+      return res.status(401).json({ error: 'Incorrect password.' });
+    }
+
+    // Since the password matches, let's ensure they exist in Firebase Auth
+    try {
+      const authUser = await admin.auth().getUserByEmail(emailLower);
+      // Synchronize/Update password to keep it in sync
+      await admin.auth().updateUser(authUser.uid, { password });
+    } catch (authErr: any) {
+      if (authErr.code === 'auth/user-not-found') {
+        // Create user in Firebase Auth
+        await admin.auth().createUser({
+          email: emailLower,
+          password: password,
+          displayName: profileData.name || 'Membro',
+        });
+      } else {
+        throw authErr;
+      }
+    }
+
+    return res.json({
+      success: true,
+      name: profileData.name || 'Membro',
+      email: emailLower
+    });
+
+  } catch (err: any) {
+    console.error('[API Error] Login fallback failed:', err);
+    return res.status(500).json({ error: 'Login fallback process failed.', details: err.message });
+  }
+});
+
 // Vite Integration
 async function main() {
   if (process.env.NODE_ENV !== 'production') {

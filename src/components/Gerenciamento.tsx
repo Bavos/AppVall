@@ -22,7 +22,39 @@ interface GerenciamentoProps {
 }
 
 export default function Gerenciamento({ currentUser, userProfile, onTriggerToast, onDefineAdmin, onDeleteAccount }: GerenciamentoProps) {
-  const [teamMembers, setTeamMembers] = useState<UserProfile[]>([]);
+  const [teamMembers, setTeamMembers] = useState<UserProfile[]>(() => {
+    if (userProfile) {
+      const adminEmailStr = (userProfile.adminEmail || userProfile.email || '').toLowerCase();
+      const initialAdmin: UserProfile = {
+        email: adminEmailStr,
+        name: adminEmailStr === currentUser.email.toLowerCase() ? currentUser.name : 'Administrador',
+        role: 'admin',
+        adminEmail: adminEmailStr,
+        createdAt: userProfile.createdAt || new Date().toISOString()
+      };
+      
+      const cached = localStorage.getItem(`vall_team_members_${adminEmailStr}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const hasAdmin = parsed.some(m => m.role === 'admin' || m.email.toLowerCase() === adminEmailStr);
+            if (!hasAdmin) {
+              parsed.push(initialAdmin);
+            }
+            parsed.sort((a, b) => {
+              if (a.role === 'admin') return -1;
+              if (b.role === 'admin') return 1;
+              return new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime();
+            });
+            return parsed;
+          }
+        } catch (e) {}
+      }
+      return [initialAdmin];
+    }
+    return [];
+  });
   const [isAdding, setIsAdding] = useState(false);
   
   // Form fields
@@ -54,8 +86,8 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
       return;
     }
 
-    if (newPass.length < 4) {
-      onTriggerToast('A nova senha deve ter pelo menos 4 caracteres.');
+    if (newPass.length < 6) {
+      onTriggerToast('A nova senha deve ter pelo menos 6 caracteres.');
       return;
     }
 
@@ -245,8 +277,8 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
       return;
     }
 
-    if (passTrim.length < 4) {
-      onTriggerToast('A senha deve ter pelo menos 4 caracteres.');
+    if (passTrim.length < 6) {
+      onTriggerToast('A senha deve ter pelo menos 6 caracteres.');
       return;
     }
 
@@ -483,6 +515,7 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
   }
 
   const isAdminRole = userProfile.role === 'admin';
+  const additionalCount = teamMembers.filter(m => m.role === 'member').length;
   const totalSpots = teamMembers.length;
 
   return (
@@ -515,7 +548,7 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
           <Info size={16} className="text-[#2DD4BF] shrink-0 mt-0.5" />
           <p className="text-[11px] text-gray-300 leading-relaxed text-left">
             {isAdminRole ? (
-              <span>Você cadastrou <strong className="text-white">{totalSpots - 1} de 3 adicionais</strong> permitidos. Todos os listados abaixo compartilham a sua agenda VALL em tempo real de forma sincronizada.</span>
+              <span>Você cadastrou <strong className="text-white">{additionalCount} de 3 adicionais</strong> permitidos. Todos os listados abaixo compartilham a sua agenda VALL em tempo real de forma sincronizada.</span>
             ) : (
               <span>Sua conta está integrada à agenda coletiva de <strong className="text-white">{userProfile.adminEmail}</strong>. Todos os membros do time abaixo compartilham o mesmo calendário.</span>
             )}
@@ -604,7 +637,7 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
                   className="w-full flex items-center justify-center space-x-2 py-3 px-4 border border-dashed border-[#2DD4BF]/30 hover:border-[#2DD4BF]/70 text-[#2DD4BF] hover:bg-[#2DD4BF]/5 rounded-2xl text-xs font-bold transition cursor-pointer"
                 >
                   <UserPlus size={14} />
-                  <span>Cadastrar {4 - totalSpots} Participante Adicional</span>
+                  <span>Cadastrar Participante Adicional ({4 - totalSpots} restante{4 - totalSpots > 1 ? 's' : ''})</span>
                 </button>
               ) : (
                 <div className="p-3.5 rounded-2xl bg-amber-500/5 border border-amber-500/10 text-center">
@@ -660,7 +693,7 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
 
                   {/* Password field */}
                   <div className="space-y-1">
-                    <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">Senha Inicial (Min. 4 dgt)</span>
+                    <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">Senha Inicial (Min. 6 dgt)</span>
                     <div className="flex items-center bg-white/5 border border-white/15 rounded-2xl p-2 px-3 focus-within:border-[#2DD4BF]/50">
                       <Lock className="text-gray-400 mr-2 shrink-0" size={14} />
                       <input
@@ -730,7 +763,7 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
             <div className="space-y-3">
               {/* password field */}
               <div className="space-y-1">
-                <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">Nova Senha (Mín. 4 caracteres)</span>
+                <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">Nova Senha (Mín. 6 caracteres)</span>
                 <div className="flex items-center bg-white/5 border border-white/15 rounded-2xl p-2 px-3 focus-within:border-[#2DD4BF]/50">
                   <Lock className="text-gray-400 mr-2 shrink-0" size={14} />
                   <input

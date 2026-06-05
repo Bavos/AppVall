@@ -41,7 +41,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   const getPasswordError = () => {
     if (!password) return 'Por favor, preencha a senha.';
-    if (password.length < 4) return 'A senha deve ter pelo menos 4 caracteres.';
+    if (password.length < 6) return 'A senha deve ter pelo menos 6 caracteres.';
     return null;
   };
 
@@ -171,7 +171,30 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
       // If sign-in failed (for example, user not found, or password invalid)
       if (!isSignUp && (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential')) {
-        // Core fallback: search in firestore user_profiles for team members created by Admin
+        // Try calling the server-side login fallback API
+        try {
+          const apiResponse = await fetch('/api/login-fallback', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email: email.toLowerCase(), password })
+          });
+
+          if (apiResponse.ok) {
+            const apiResult = await apiResponse.json();
+            if (apiResult.success) {
+              // Retry standard Firebase Auth sign-in now that the user is guaranteed to be created
+              const retryCredential = await signInWithEmailAndPassword(auth, email.toLowerCase(), password);
+              onLoginSuccess({ name: apiResult.name, email: apiResult.email });
+              return;
+            }
+          }
+        } catch (apiErr) {
+          console.warn('Backend login fallback API failed or offline:', apiErr);
+        }
+
+        // Core fallback: search in firestore user_profiles for team members created by Admin (if signed in or database accessible)
         try {
           const uProfileDoc = await getDoc(doc(db, 'user_profiles', email.toLowerCase()));
           if (uProfileDoc.exists()) {
@@ -256,8 +279,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       return;
     }
 
-    if (forgotNewPassword.length < 4) {
-      setErrorMessage('A nova senha deve ter pelo menos 4 caracteres.');
+    if (forgotNewPassword.length < 6) {
+      setErrorMessage('A nova senha deve ter pelo menos 6 caracteres.');
       return;
     }
 
@@ -443,7 +466,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                       <input
                         type={showPassword ? 'text' : 'password'}
                         required
-                        placeholder="Mínimo de 4 caracteres"
+                        placeholder="Mínimo de 6 caracteres"
                         value={forgotNewPassword}
                         onChange={(e) => setForgotNewPassword(e.target.value)}
                         className="bg-transparent text-base w-full text-white border-0 outline-none focus:outline-none focus:ring-0 font-mono"
@@ -586,7 +609,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                     type={showPassword ? 'text' : 'password'}
                     required
                     disabled={isSubmitting || isGoogleLoading}
-                    placeholder={isSignUp ? "Crie sua senha (mín. 4 dgt)" : "Sua senha segura"}
+                    placeholder={isSignUp ? "Crie sua senha (mín. 6 dgt)" : "Sua senha segura"}
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);

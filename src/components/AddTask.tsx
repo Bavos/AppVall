@@ -62,7 +62,7 @@ export default function AddTask({
       : '';
 
     try {
-      if (syncGoogle && googleToken) {
+      if (syncGoogle && googleToken && category === 'Agendamento') {
         setIsSyncing(true);
         setSyncError(null);
         try {
@@ -70,11 +70,11 @@ export default function AddTask({
             title: title.trim(),
             description: eventDesc,
             date,
-            time: category === 'Agendamento' && time ? time : undefined,
+            time: time ? time : undefined,
             category,
             priority,
             estimatedMinutes,
-            email: category === 'Agendamento' && email ? email.trim() : undefined
+            email: email ? email.trim() : undefined
           });
           if (eventRes) {
             googleEventId = eventRes.id;
@@ -353,75 +353,81 @@ export default function AddTask({
         </div>
 
         {/* Sincronização de Agenda */}
-        <div className="glass border border-white/10 rounded-2xl p-4 space-y-3 mt-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Calendar className="text-[#2DD4BF]" size={18} />
-              <span className="text-xs font-bold uppercase tracking-wider text-white">Google Agenda</span>
+        {category === 'Agendamento' ? (
+          <div className="glass border border-white/10 rounded-2xl p-4 space-y-3 mt-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Calendar className="text-[#2DD4BF]" size={18} />
+                <span className="text-xs font-bold uppercase tracking-wider text-white">Google Agenda</span>
+              </div>
+              {googleUser ? (
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-mono border border-emerald-500/20">
+                  Conectado
+                </span>
+              ) : (
+                <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-mono border border-amber-500/20">
+                  Sincronização Desligada
+                </span>
+              )}
             </div>
-            {googleUser ? (
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-mono border border-emerald-500/20">
-                Conectado
-              </span>
-            ) : (
-              <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-mono border border-amber-500/20">
-                Sincronização Desligada
-              </span>
-            )}
-          </div>
 
-          {googleUser ? (
-            <div className="space-y-3">
-              <p className="text-xs text-gray-300 leading-snug">
-                Conectado como <span className="text-white font-semibold font-mono">{googleUser.email}</span>. Suas novas tarefas serão marcadas no calendário.
-              </p>
-              
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center space-x-2.5 cursor-pointer text-sm text-gray-200 select-none min-h-[44px] py-1">
-                  <input
-                    type="checkbox"
-                    checked={syncGoogle}
-                    onChange={(e) => setSyncGoogle(e.target.checked)}
-                    className="rounded accent-[#2DD4BF] focus:ring-0 cursor-pointer w-5 h-5 bg-transparent border-white/20 text-[#2DD4BF]"
-                  />
-                  <span>Agendar no Google Calendar</span>
-                </label>
+            {googleUser ? (
+              <div className="space-y-3">
+                <p className="text-xs text-gray-300 leading-snug">
+                  Conectado como <span className="text-white font-semibold font-mono">{googleUser.email}</span>. Este agendamento será marcado no seu calendário.
+                </p>
                 
+                <div className="flex items-center justify-between pt-1">
+                  <label className="flex items-center space-x-2.5 cursor-pointer text-sm text-gray-200 select-none min-h-[44px] py-1">
+                    <input
+                      type="checkbox"
+                      checked={syncGoogle}
+                      onChange={(e) => setSyncGoogle(e.target.checked)}
+                      className="rounded accent-[#2DD4BF] focus:ring-0 cursor-pointer w-5 h-5 bg-transparent border-white/20 text-[#2DD4BF]"
+                    />
+                    <span>Agendar no Google Calendar</span>
+                  </label>
+                  
+                  <button
+                    type="button"
+                    onClick={onGoogleSignOut}
+                    className="text-xs text-gray-300 hover:text-red-400 transition underline cursor-pointer hover:no-underline min-h-[44px] px-2 flex items-center"
+                  >
+                    Desconectar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-300 leading-snug">
+                  Sincronize com a sua conta Google para criar compromissos diretamente no calendário oficial.
+                </p>
                 <button
                   type="button"
-                  onClick={onGoogleSignOut}
-                  className="text-xs text-gray-300 hover:text-red-400 transition underline cursor-pointer hover:no-underline min-h-[44px] px-2 flex items-center"
+                  onClick={onGoogleSignIn}
+                  className="w-full py-3.5 rounded-2xl border border-white/10 bg-white/5 text-xs text-[#2DD4BF] hover:bg-[#2DD4BF]/10 transition flex items-center justify-center gap-2 font-bold cursor-pointer hover:border-[#2DD4BF]/20 min-h-[44px] active:scale-95"
                 >
-                  Desconectar
+                  Conectar Conta Google
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-xs text-gray-300 leading-snug">
-                Sincronize com a sua conta Google para criar compromissos diretamente no calendário oficial.
-              </p>
-              <button
-                type="button"
-                onClick={onGoogleSignIn}
-                className="w-full py-3.5 rounded-2xl border border-white/10 bg-white/5 text-xs text-[#2DD4BF] hover:bg-[#2DD4BF]/10 transition flex items-center justify-center gap-2 font-bold cursor-pointer hover:border-[#2DD4BF]/20 min-h-[44px] active:scale-95"
-              >
-                Conectar Conta Google
-              </button>
-            </div>
-          )}
+            )}
 
-          {isSyncing && (
-            <div className="text-xs text-[#2DD4BF] flex items-center gap-2 font-mono pt-1 animate-pulse min-h-[44px]">
-              <RefreshCw size={12} className="animate-spin" />
-              Sincronizando compromisso no Google Agenda...
-            </div>
-          )}
+            {isSyncing && (
+              <div className="text-xs text-[#2DD4BF] flex items-center gap-2 font-mono pt-1 animate-pulse min-h-[44px]">
+                <RefreshCw size={12} className="animate-spin" />
+                Sincronizando compromisso no Google Agenda...
+              </div>
+            )}
 
-          {syncError && (
-            <p className="text-[10px] text-amber-400 leading-snug font-mono bg-amber-500/5 p-1.5 rounded border border-amber-500/10">{syncError}</p>
-          )}
-        </div>
+            {syncError && (
+              <p className="text-[10px] text-amber-400 leading-snug font-mono bg-amber-500/5 p-1.5 rounded border border-amber-500/10">{syncError}</p>
+            )}
+          </div>
+        ) : (
+          <div className="bg-white/[0.02] text-gray-400 text-xs text-center py-4 px-4 border border-white/5 rounded-2xl">
+            Sincronização com o Google Agenda disponível exclusivamente para a categoria <span className="text-[#2DD4BF] font-semibold">Agendamento</span>.
+          </div>
+        )}
 
         {/* Botão de Envio */}
         <button

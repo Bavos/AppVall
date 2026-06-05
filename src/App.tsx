@@ -52,6 +52,29 @@ export default function App() {
   const [selectedTaskForFocus, setSelectedTaskForFocus] = useState<Task | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [focusTrigger, setFocusTrigger] = useState<number>(0);
+
+  // Listener de 'window focus' e 'visibilitychange' para re-sincronizar dados em tempo real
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log('[Sincronização] O app ganhou foco. Forçando re-sincronização de dados...');
+      setFocusTrigger(prev => prev + 1);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleFocus();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   const [googleUser, setGoogleUser] = useState<any>(() => {
     const email = localStorage.getItem('vall_google_email');
@@ -112,9 +135,7 @@ export default function App() {
       try {
         await getDocFromServer(doc(db, 'test', 'connection'));
       } catch (error) {
-        if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration.");
-        }
+        console.warn("Firestore connection check info:", error instanceof Error ? error.message : error);
       }
     }
     testConnection();
@@ -231,8 +252,8 @@ export default function App() {
         }
       }
     }, (error) => {
-      console.error('Erro ao ler perfil do Firestore:', error);
-      handleFirestoreError(error, OperationType.GET, `user_profiles/${emailLower}`);
+      console.warn('Erro ao ler perfil do Firestore:', error);
+      triggerToast('Avisamos que a conexão ao banco está instável. Carregando perfil local.');
     });
 
     return () => unsubscribe();
@@ -262,19 +283,35 @@ export default function App() {
     if (localTasksRaw) {
       try {
         const localTasks: Task[] = JSON.parse(localTasksRaw);
-        const tasksToSync = localTasks.filter(t => 
-          t.adminEmail === adminEmailToFilter || 
-          (!t.adminEmail && t.userEmail === emailToFilter)
-        );
+        
+        // Se houver tarefas criadas localmente sem login real ou sob o usuário padrão 'admin@example.com',
+        // nós as migramos para o novo usuário logado para garantir sincronização imediata entre laptop e celular.
+        const tasksToSync = localTasks.map(t => {
+          const isLocalOrUnassigned = 
+            !t.adminEmail || 
+            t.adminEmail === 'admin@example.com' ||
+            !t.userEmail || 
+            t.userEmail === 'admin@example.com';
+
+          if (isLocalOrUnassigned) {
+            return {
+              ...t,
+              userEmail: emailToFilter,
+              adminEmail: adminEmailToFilter
+            };
+          }
+          return t;
+        }).filter(t => t.adminEmail === adminEmailToFilter);
+
         for (const t of tasksToSync) {
-          const sanitized: Task = {
-            ...t,
-            userEmail: t.userEmail || emailToFilter,
-            adminEmail: t.adminEmail || adminEmailToFilter
-          };
-          setDoc(doc(db, 'tasks', t.id), cleanUndefined(sanitized)).catch(e => {
+          setDoc(doc(db, 'tasks', t.id), cleanUndefined(t)).catch(e => {
             console.warn('Falha silenciosa ao sincronizar tarefa local:', e);
           });
+        }
+        
+        // Atualiza o local storage com as tarefas migradas
+        if (tasksToSync.length > 0) {
+          localStorage.setItem('vall_tasks', JSON.stringify(tasksToSync));
         }
       } catch (err) {
         console.warn('Erro ao processar backup de tarefas locais:', err);
@@ -340,13 +377,21 @@ export default function App() {
       fetchedTasks.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
       setTasks(fetchedTasks);
     }, (error) => {
-      // If of query fails, try fallback userEmail query or print helpful diagnostic
-      console.warn('Real-time task synchronization for shared adminEmail failed. Retrying fallback query.', error);
-      handleFirestoreError(error, OperationType.GET, 'tasks');
+      onSnapshot(query(tasksCollectionRef, where('userEmail', '==', emailToFilter)), (fallbackSnap) => {
+        const fetchedTasks: Task[] = [];
+        fallbackSnap.forEach((docSnap) => {
+          fetchedTasks.push(docSnap.data() as Task);
+        });
+        fetchedTasks.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
+        setTasks(fetchedTasks);
+      }, (fallbackError) => {
+        console.warn('Fallbacks de sincronização esgotados para tarefas:', fallbackError);
+        triggerToast('Sem conexão de rede para carregar novas tarefas. Exibindo cópia local cacheada.');
+      });
     });
 
     return () => unsubscribe();
-  }, [currentUser, firebaseUser, userProfile]);
+  }, [currentUser, firebaseUser, userProfile, focusTrigger]);
 
   const handleGoogleSignIn = async () => {
     try {

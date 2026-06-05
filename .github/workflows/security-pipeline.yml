@@ -8,7 +8,6 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch: # Permite executar o pipeline manualmente pela aba Actions
 
 permissions:
   contents: read
@@ -49,9 +48,8 @@ jobs:
           echo "NPM Audit executed."
         continue-on-error: true
 
-      # Usando o commit SHA estável e imutável para contornar a indisponibilidade das tags da Aqua Security
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@18f2510ee49f0d4d9f7ee36b17dc8b48c1a567f1 # v0.36.2
+      - name: Run Trivy (SCA)
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -65,7 +63,6 @@ jobs:
         uses: semgrep/semgrep-action@v1
         with:
           config: p/javascript
-          image: returntocorp/semgrep
         continue-on-error: true
 
       - name: Generate Security Summary Report
@@ -83,7 +80,7 @@ jobs:
           echo "### 📂 Artifact Details" >> security-reports/security-summary.md
           echo "All reports are preserved in the **security-audit-reports** artifact under the run summary." >> security-reports/security-summary.md
           
-          # Escreve o relatório no GITHUB_STEP_SUMMARY para visualização direta na página da Action
+          # Write report directly to GITHUB_STEP_SUMMARY to permit instant download/view in Actions panel
           cat security-reports/security-summary.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Security Reports Artifact
