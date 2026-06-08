@@ -52,79 +52,98 @@ export default function AddTask({
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
 
-    let googleEventId: string | undefined;
-    let googleEventLink: string | undefined;
-    let googleMeetLink: string | undefined;
+    // Captura os dados atuais do formulário antes de limpá-los para disponibilizar no modal de sucesso
+    const savedTitle = title.trim();
+    const savedCategory = category;
+    const savedDesc = description.trim();
+    const savedEmail = email.trim();
+    const savedTime = time;
+    const savedDate = date;
+    const savedEstimated = estimatedMinutes;
+    const savedStatus = status;
 
-    const eventDesc = category === 'Agendamento'
-      ? `E-mail: ${email.trim()}`
-      : category === 'Notas'
-      ? description.trim()
-      : '';
+    // Define imediatamente o estado de "Salvo com Sucesso!" para feedback instantâneo após o clique
+    setLastCreated({ title: savedTitle, category: savedCategory });
+    setAlertSuccess(true);
 
-    try {
-      if (syncGoogle && googleToken && category === 'Agendamento') {
-        setIsSyncing(true);
-        setSyncError(null);
-        try {
-          const eventRes = await createGoogleCalendarEvent(googleToken, {
-            title: title.trim(),
-            description: eventDesc,
-            date,
-            time: time ? time : undefined,
-            category,
-            priority: 'Média',
-            estimatedMinutes,
-            email: email ? email.trim() : undefined
-          });
-          if (eventRes) {
-            googleEventId = eventRes.id;
-            googleEventLink = eventRes.htmlLink;
-            googleMeetLink = eventRes.hangoutLink;
+    // Limpa imediatamente todos os campos do formulário para dar sensação de envio instantâneo
+    setTitle('');
+    setDescription('');
+    setEmail('');
+    setTime('');
+    setStatus('Pendente');
+
+    // Executa e aguarda a gravação no Firestore e o Google Agenda de forma assíncrona em segundo plano
+    (async () => {
+      let googleEventId: string | undefined;
+      let googleEventLink: string | undefined;
+      let googleMeetLink: string | undefined;
+
+      const eventDesc = savedCategory === 'Agendamento'
+        ? `E-mail: ${savedEmail}`
+        : savedCategory === 'Notas'
+        ? savedDesc
+        : '';
+
+      try {
+        if (syncGoogle && googleToken && savedCategory === 'Agendamento') {
+          setIsSyncing(true);
+          setSyncError(null);
+          try {
+            const eventRes = await createGoogleCalendarEvent(googleToken, {
+              title: savedTitle,
+              description: eventDesc,
+              date: savedDate,
+              time: savedTime ? savedTime : undefined,
+              category: savedCategory,
+              priority: 'Média',
+              estimatedMinutes: savedEstimated,
+              email: savedEmail ? savedEmail : undefined
+            });
+            if (eventRes) {
+              googleEventId = eventRes.id;
+              googleEventLink = eventRes.htmlLink;
+              googleMeetLink = eventRes.hangoutLink;
+            }
+          } catch (err: any) {
+            console.error('Failed to sync to Google Calendar:', err);
+            setSyncError('Não foi possível gravar no Google Agenda, mas a tarefa foi criada localmente.');
+          } finally {
+            setIsSyncing(false);
           }
-        } catch (err: any) {
-          console.error('Failed to sync to Google Calendar:', err);
-          setSyncError('Não foi possível gravar no Google Agenda, mas a tarefa foi criada localmente.');
-        } finally {
-          setIsSyncing(false);
         }
+
+        await onAddTask({
+          title: savedTitle,
+          description: savedCategory === 'Notas' ? savedDesc : undefined,
+          category: savedCategory,
+          priority: 'Média',
+          status: savedStatus,
+          date: savedDate,
+          time: savedCategory === 'Agendamento' && savedTime ? savedTime : undefined,
+          estimatedMinutes: savedEstimated,
+          googleEventId,
+          googleEventLink,
+          googleMeetLink,
+          email: savedCategory === 'Agendamento' ? savedEmail : undefined
+        });
+      } catch (err) {
+        console.error('Error in background task submission:', err);
       }
+    })();
+  };
 
-      await onAddTask({
-        title: title.trim(),
-        description: category === 'Notas' ? description.trim() : undefined,
-        category,
-        priority: 'Média',
-        status, // Pass custom status
-        date,
-        time: category === 'Agendamento' && time ? time : undefined,
-        estimatedMinutes,
-        googleEventId,
-        googleEventLink,
-        googleMeetLink,
-        email: category === 'Agendamento' ? email.trim() : undefined
-      });
+  const handleCreateAnother = () => {
+    setAlertSuccess(false);
+    setLastCreated(null);
+    isSubmittingRef.current = false;
+  };
 
-      // Mostra alerta de sucesso e limpa formulário preservando dados para o feedback dinâmico
-      setLastCreated({ title: title.trim(), category });
-      setAlertSuccess(true);
-      
-      setTitle('');
-      setDescription('');
-      setEmail('');
-      setTime('');
-      setStatus('Pendente');
-      
-      setTimeout(() => {
-        setAlertSuccess(false);
-        setLastCreated(null);
-        onChangeTab('dashboard'); // Redireciona para o Painel Geral para ver a lista atualizada
-        isSubmittingRef.current = false;
-      }, 2500);
-    } catch (err) {
-      console.error('Error during submit:', err);
-      isSubmittingRef.current = false;
-    }
+  const handleGoToAgenda = () => {
+    setAlertSuccess(false);
+    setLastCreated(null);
+    isSubmittingRef.current = false;
+    onChangeTab('dashboard');
   };
 
   return (
@@ -139,33 +158,46 @@ export default function AddTask({
 
       {/* OVERLAY DE SUCESSO COESIVO, DIRETINHO E IMPOSSÍVEL DE PERDER (FIXED CENTERED MODAL) */}
       {alertSuccess && lastCreated && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-[#0b1329] border border-emerald-500/30 text-emerald-400 p-6 rounded-3xl max-w-sm w-full flex flex-col items-center text-center shadow-2xl relative animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200" id="success_modal_overlay">
+          <div className="bg-[#0b1329] border border-[#2DD4BF]/40 text-[#2DD4BF] p-6 rounded-3xl max-w-sm w-full flex flex-col items-center text-center shadow-2xl relative animate-in zoom-in-95 duration-200">
             <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center text-[#2DD4BF] mb-4 border border-emerald-500/20">
-              <CheckCircle size={36} className="animate-bounce" />
+              <Check size={36} className="text-[#2DD4BF]" />
             </div>
             
-            <h3 className="text-xl font-bold text-white mb-2">Salvo com Sucesso!</h3>
+            <h3 className="text-xl font-bold text-white mb-2">Operação Realizada!</h3>
             
-            <p className="text-xs text-gray-300 px-2 leading-relaxed">
+            <p className="text-sm text-gray-300 px-2 leading-relaxed mb-6">
               {lastCreated.category === 'Agendamento' && (
-                <span>O agendamento de <strong className="text-white">"{lastCreated.title}"</strong> foi totalmente gerado, gravado e sincronizado no cronograma diário.</span>
+                <span>O agendamento de <strong className="text-white">"{lastCreated.title}"</strong> foi gerado e salvo no cronograma diário.</span>
               )}
               {lastCreated.category === 'Disponível' && (
-                <span>A disponibilidade da profissional <strong className="text-white">"{lastCreated.title}"</strong> foi registrada sob o dia selecionado.</span>
+                <span>A disponibilidade da profissional <strong className="text-white">"{lastCreated.title}"</strong> foi registrada com sucesso.</span>
               )}
               {lastCreated.category === 'Curinga' && (
                 <span>O paciente Curinga <strong className="text-white">"{lastCreated.title}"</strong> foi adicionado com sucesso.</span>
               )}
               {lastCreated.category === 'Notas' && (
-                <span>A anotação <strong className="text-white">"{lastCreated.title}"</strong> foi registrada de forma segura no histórico.</span>
+                <span>A anotação <strong className="text-white">"{lastCreated.title}"</strong> foi guardada no histórico.</span>
               )}
             </p>
-            
-            <div className="mt-5 w-full bg-white/5 h-1 rounded-full overflow-hidden">
-              <div className="bg-[#2DD4BF] h-full rounded-full animate-[progress_2.4s_linear]" style={{ width: '100%' }}></div>
+
+            <div className="w-full space-y-2.5">
+              <button
+                type="button"
+                onClick={handleGoToAgenda}
+                className="w-full bg-[#2DD4BF] hover:bg-[#20bda8] text-black text-sm font-bold py-3.5 px-4 rounded-xl transition active:scale-95 cursor-pointer max-h-[48px]"
+              >
+                Visualizar na Agenda
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleCreateAnother}
+                className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white text-sm font-semibold py-3 px-4 rounded-xl transition active:scale-95 cursor-pointer max-h-[48px]"
+              >
+                Criar Nova Atividade
+              </button>
             </div>
-            <span className="text-[9px] text-gray-500 mt-2 font-mono">Redirecionando para as Tarefas...</span>
           </div>
         </div>
       )}
