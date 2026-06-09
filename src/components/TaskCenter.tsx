@@ -41,7 +41,7 @@ export default function TaskCenter({
   // Autocheck RSVP for tasks of the active date on load/transition to keep statuses fresh completely automatically
   React.useEffect(() => {
     if (!googleToken) return;
-    const activeDateTasks = tasks.filter(t => t.date === activeDate && t.googleEventId && t.email);
+    const activeDateTasks = tasks.filter(t => t.date === activeDate && t.googleEventId);
     if (activeDateTasks.length === 0) return;
 
     // Use a small delay to avoid race conditions with quick state transitions
@@ -49,7 +49,8 @@ export default function TaskCenter({
       const autoCheck = async () => {
         for (const task of activeDateTasks) {
           try {
-            const rsvpData = await getGoogleCalendarEventRSVP(googleToken, task.googleEventId!, task.email!);
+            const attendeeEmail = task.email || googleUser?.email || '';
+            const rsvpData = await getGoogleCalendarEventRSVP(googleToken, task.googleEventId!, attendeeEmail);
             if (rsvpData) {
               let updatedStatus = task.status;
               if (rsvpData.rsvpStatus === 'accepted' && task.status === 'Pendente') {
@@ -165,9 +166,11 @@ export default function TaskCenter({
     if (!googleToken) return;
     setIsSyncingAll(true);
     try {
-      const tasksToSync = tasks.filter(t => t.googleEventId && t.email);
+      const tasksToSync = tasks.filter(t => t.googleEventId);
+      let updatedCount = 0;
       for (const t of tasksToSync) {
-        const rsvpData = await getGoogleCalendarEventRSVP(googleToken, t.googleEventId!, t.email!);
+        const attendeeEmail = t.email || googleUser?.email || '';
+        const rsvpData = await getGoogleCalendarEventRSVP(googleToken, t.googleEventId!, attendeeEmail);
         if (rsvpData) {
           let updatedStatus = t.status;
           if (rsvpData.rsvpStatus === 'accepted' && t.status === 'Pendente') {
@@ -175,12 +178,27 @@ export default function TaskCenter({
           } else if (rsvpData.rsvpStatus === 'declined' && t.status === 'Em Progresso') {
             updatedStatus = 'Pendente';
           }
-          onUpdateTask({
-            ...t,
-            rsvpStatus: rsvpData.rsvpStatus,
-            googleMeetLink: rsvpData.hangoutLink || t.googleMeetLink,
-            status: updatedStatus
-          });
+          const hasChanges = t.rsvpStatus !== rsvpData.rsvpStatus || 
+                              t.googleMeetLink !== rsvpData.hangoutLink || 
+                              t.status !== updatedStatus;
+          if (hasChanges) {
+            onUpdateTask({
+              ...t,
+              rsvpStatus: rsvpData.rsvpStatus,
+              googleMeetLink: rsvpData.hangoutLink || t.googleMeetLink,
+              status: updatedStatus
+            });
+            updatedCount++;
+          }
+        }
+      }
+      if (onTriggerToast) {
+        if (tasksToSync.length === 0) {
+          onTriggerToast('Não há compromissos sincronizados com o Google Agenda.');
+        } else if (updatedCount > 0) {
+          onTriggerToast(`Agenda atualizada! ${updatedCount} tarefa(s) foram sincronizada(s) com mudanças.`);
+        } else {
+          onTriggerToast('Sincronização concluída! Suas respostas já estão atualizadas.');
         }
       }
     } catch (err: any) {
@@ -347,24 +365,24 @@ export default function TaskCenter({
       {/* BANNER DO GOOGLE CALENDAR */}
       <section className="px-2">
         {googleUser ? (
-          <div className="flex items-center justify-between bg-[#2DD4BF]/5 border border-[#2DD4BF]/20 rounded-2xl px-4 py-2.5 text-xs">
-            <div className="flex items-center space-x-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-gray-300">Agenda: </span>
-              <span className="text-white font-semibold font-mono">{googleUser.email}</span>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-[#2DD4BF]/5 border border-[#2DD4BF]/20 rounded-2xl p-3.5 sm:px-4 sm:py-2.5 gap-3 sm:gap-2 text-xs">
+            <div className="flex items-center space-x-2 min-w-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="text-gray-300 shrink-0">Agenda: </span>
+              <span className="text-white font-semibold font-mono truncate text-[11px] sm:text-xs">{googleUser.email}</span>
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center justify-between sm:justify-end gap-3 sm:space-x-3 w-full sm:w-auto">
               <button
                 onClick={handleSyncAllRSVPs}
                 disabled={isSyncingAll}
-                className="text-[10px] text-[#2DD4BF] hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                className="text-[11px] sm:text-[10px] bg-[#2DD4BF]/10 hover:bg-[#2DD4BF]/20 border border-[#2DD4BF]/20 hover:border-[#2DD4BF]/40 text-[#2DD4BF] font-semibold py-1.5 px-3 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition active:scale-95 min-h-[32px] sm:min-h-0"
               >
-                <RefreshCw size={9} className={isSyncingAll ? "animate-spin" : ""} />
-                Atualizar Respostas
+                <RefreshCw size={11} className={isSyncingAll ? "animate-spin" : ""} />
+                <span>Atualizar Respostas</span>
               </button>
               <button
                 onClick={onGoogleSignOut}
-                className="text-[10px] text-gray-400 hover:text-red-400 font-mono underline cursor-pointer hover:no-underline shrink-0"
+                className="text-[11px] sm:text-[10px] bg-white/5 border border-white/5 hover:bg-red-500/10 hover:border-red-500/25 text-gray-300 hover:text-red-400 font-mono py-1.5 px-2.5 rounded-lg cursor-pointer transition active:scale-95 shrink-0 min-h-[32px] sm:min-h-0"
               >
                 Sair
               </button>
@@ -375,7 +393,7 @@ export default function TaskCenter({
             <span className="text-gray-400">Sincronização com Google Agenda desligada.</span>
             <button
               onClick={onGoogleSignIn}
-              className="px-2.5 py-1 text-[10px] font-bold bg-[#2DD4BF]/15 border border-[#2DD4BF]/30 hover:bg-[#2DD4BF]/25 text-[#2DD4BF] transition rounded-lg cursor-pointer flex items-center gap-1 shrink-0 ml-2"
+              className="px-2.5 py-1.5 text-[11px] font-bold bg-[#2DD4BF]/15 border border-[#2DD4BF]/30 hover:bg-[#2DD4BF]/25 text-[#2DD4BF] transition rounded-lg cursor-pointer flex items-center gap-1 shrink-0 ml-2 min-h-[36px]"
             >
               Conectar
             </button>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, Trash2, UserPlus, Lock, Mail, User, Info, Check, Copy, Sparkles, Clock } from 'lucide-react';
+import { Users, Shield, Trash2, UserPlus, Lock, Mail, User, Info, Check, Copy, Sparkles, Clock, Send } from 'lucide-react';
 import { db, auth, handleFirestoreError, OperationType, cleanUndefined } from '../googleAuth';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { updatePassword } from 'firebase/auth';
+import { Task } from '../types';
 
 interface UserProfile {
   email: string;
@@ -25,9 +26,10 @@ interface GerenciamentoProps {
   onTriggerToast: (msg: string) => void;
   onDefineAdmin: () => void;
   onDeleteAccount: () => Promise<void>;
+  tasks: Task[];
 }
 
-export default function Gerenciamento({ currentUser, userProfile, onTriggerToast, onDefineAdmin, onDeleteAccount }: GerenciamentoProps) {
+export default function Gerenciamento({ currentUser, userProfile, onTriggerToast, onDefineAdmin, onDeleteAccount, tasks }: GerenciamentoProps) {
   const [teamMembers, setTeamMembers] = useState<UserProfile[]>(() => {
     if (userProfile) {
       const adminEmailStr = (userProfile.adminEmail || userProfile.email || '').toLowerCase();
@@ -91,6 +93,122 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
     return userProfile?.dailyReportConfig?.sendTime || '08:00';
   });
   const [isSavingConfig, setIsSavingConfig] = useState(false);
+
+  // Manual Report States
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [generatedReportPreview, setGeneratedReportPreview] = useState<string | null>(null);
+  const [isReportCopied, setIsReportCopied] = useState(false);
+  const [reportSendResult, setReportSendResult] = useState<{
+    success: boolean;
+    sentTo: string;
+    tasksCount: number;
+    error?: string;
+  } | null>(null);
+
+  const handleTriggerManualReport = async () => {
+    if (!userProfile) return;
+    setIsGeneratingReport(true);
+    setGeneratedReportPreview(null);
+    setReportSendResult(null);
+    setIsReportCopied(false);
+
+    try {
+      const emailLower = currentUser.email.toLowerCase();
+      const adminEmailLower = (userProfile.adminEmail || emailLower).toLowerCase();
+      const destinationEmail = userProfile.dailyReportConfig?.email || emailLower;
+      
+      const targetDate = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const response = await fetch('/api/generate-daily-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          adminEmail: adminEmailLower,
+          destinationEmail: destinationEmail,
+          selectedDate: targetDate,
+          tasks: tasks
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro do servidor com código: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setGeneratedReportPreview(data.reportMarkdown);
+        setReportSendResult({
+          success: data.emailRes?.success !== false,
+          sentTo: data.sentTo,
+          tasksCount: data.tasksCount,
+          error: data.emailRes?.error
+        });
+        
+        if (data.emailRes?.success === false) {
+          onTriggerToast('Relatório gerado! O e-mail não pôde ser enviado via SMTP, mas você pode copiar o texto.');
+        } else {
+          onTriggerToast('Relatório Diário gerado e enviado com sucesso!');
+        }
+      } else {
+        throw new Error(data.error || 'Erro na resposta do servidor.');
+      }
+    } catch (err: any) {
+      console.error('Falha ao gerar relatório:', err);
+      onTriggerToast(`Erro ao gerar relatório: ${err.message || String(err)}`);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleCopyReportText = () => {
+    if (!generatedReportPreview) return;
+    navigator.clipboard.writeText(generatedReportPreview);
+    setIsReportCopied(true);
+    onTriggerToast('Relatório copiado!');
+    setTimeout(() => {
+      setIsReportCopied(false);
+    }, 2000);
+  };
+
+  const renderSimpleMarkdown = (md: string) => {
+    const lines = md.split('\n');
+    return (
+      <div className="space-y-2 text-xs font-sans text-gray-300 leading-relaxed">
+        {lines.map((line, idx) => {
+          if (line.trim().startsWith('###')) {
+            return (
+              <h4 key={idx} className="text-sm font-extrabold text-white mt-4 first:mt-0 tracking-wide pb-1 border-b border-white/5 uppercase">
+                {line.replace('###', '').trim()}
+              </h4>
+            );
+          }
+          if (line.trim().startsWith('#')) {
+            return (
+              <h3 key={idx} className="text-base font-extrabold text-[#2DD4BF] mt-3 tracking-wide">
+                {line.replace(/^#+/, '').trim()}
+              </h3>
+            );
+          }
+          if (line.trim().startsWith('-') || line.trim().startsWith('*')) {
+            return (
+              <div key={idx} className="flex items-start space-x-2 pl-2">
+                <span className="text-[#2DD4BF] select-none mt-1">•</span>
+                <span className="flex-1">
+                  {line.replace(/^[-*]\s*/, '').trim()}
+                </span>
+              </div>
+            );
+          }
+          if (!line.trim()) {
+            return <div key={idx} className="h-2" />;
+          }
+          return <p key={idx}>{line}</p>;
+        })}
+      </div>
+    );
+  };
 
   useEffect(() => {
     setReportEmail(currentUser.email.toLowerCase());
@@ -949,7 +1067,8 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
             </div>
           )}
 
-          <div className="pt-1.5">
+          {/* BOTÕES DE CONFIGURAÇÃO E DISPARO MANUAL */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1.5">
             <button
               type="button"
               onClick={handleSaveReportConfig}
@@ -965,7 +1084,83 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
                 <span>Salvar Configurações</span>
               )}
             </button>
+
+            <button
+              type="button"
+              onClick={handleTriggerManualReport}
+              disabled={isGeneratingReport}
+              className="w-full bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-50 text-[#2DD4BF] py-3 px-4 rounded-xl font-bold uppercase tracking-wider text-[10px] text-center transition cursor-pointer flex items-center justify-center space-x-2 min-h-[40px]"
+            >
+              {isGeneratingReport ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-[#2DD4BF]/30 border-t-[#2DD4BF] rounded-full animate-spin mr-1" />
+                  <span>Gerando Relatório...</span>
+                </>
+              ) : (
+                <>
+                  <Send size={12} />
+                  <span>Enviar Relatório de Hoje Agora</span>
+                </>
+              )}
+            </button>
           </div>
+
+          {/* PREVIEW DO RELATÓRIO MANUAL */}
+          {generatedReportPreview && (
+            <div className="mt-4 p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 rounded-full bg-[#2DD4BF] animate-pulse" />
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Visualização do Relatório</span>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={handleCopyReportText}
+                  className="bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white p-1.5 px-3 rounded-lg flex items-center space-x-1.5 transition text-[10px] uppercase font-mono tracking-widest border border-white/5 active:scale-95 cursor-pointer"
+                >
+                  {isReportCopied ? (
+                    <>
+                      <Check size={12} className="text-[#2DD4BF]" />
+                      <span className="text-[#2DD4BF]">Copiado</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} />
+                      <span>Copiar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Status de Envio */}
+              {reportSendResult && (
+                <div className={`p-2.5 px-3.5 rounded-xl border text-[11px] font-semibold leading-relaxed flex items-start space-x-2 ${
+                  reportSendResult.success 
+                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300' 
+                    : 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+                }`}>
+                  <span className="mt-0.5 select-none">✓</span>
+                  <div>
+                    <p className="font-bold">
+                      {reportSendResult.success 
+                        ? `Relatório gerado com sucesso para ${reportSendResult.tasksCount} tarefas!` 
+                        : 'Relatório gerado localmente, mas não enviado por e-mail.'}
+                    </p>
+                    <p className="font-medium text-white/70">
+                      {reportSendResult.success 
+                        ? `Enviado para ${reportSendResult.sentTo} (SMTP OK)`
+                        : `O servidor SMTP não está configurado na sua plataforma. Use o botão Copiar acima para copiar a mensagem.`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4 rounded-xl bg-black/50 border border-white/5 max-h-72 overflow-y-auto custom-scrollbar text-gray-300 select-text leading-relaxed font-mono">
+                {renderSimpleMarkdown(generatedReportPreview)}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -206,6 +206,24 @@ app.post('/api/login-fallback', async (req, res) => {
 });
 
 // Helper for Daily Operational Report plaintext / markdown fallback format
+function cleanReportContentFields(text: string): string {
+  if (!text) return text;
+  return text
+    .split('\n')
+    .filter(line => {
+      const lower = line.toLowerCase();
+      // Filter lines that look like key-value bullets for Estimativa, Prioridade, Status, or Estado
+      const hasKey = lower.includes('estimativa') || lower.includes('prioridade') || lower.includes('status') || lower.includes('estado') || lower.includes('estimatedminutes') || lower.includes('priority');
+      const isBulletOrBold = line.trim().startsWith('*') || line.trim().startsWith('-') || line.trim().startsWith('•') || lower.includes('**');
+      
+      if (hasKey && isBulletOrBold) {
+        return false;
+      }
+      return true;
+    })
+    .join('\n');
+}
+
 function generateFallbackReport(tasks: any[], targetDate: string): string {
   const curinga = tasks.filter(t => t.category === 'Curinga');
   const disponivel = tasks.filter(t => t.category === 'Disponível');
@@ -218,7 +236,7 @@ function generateFallbackReport(tasks: any[], targetDate: string): string {
     report += `Não há registros de pacientes Curinga para hoje.\n\n`;
   } else {
     curinga.forEach(t => {
-      report += `- **${t.title}** ${t.status ? `[${t.status}]` : ''} ${t.description ? `- ${t.description}` : ''}\n`;
+      report += `- **${t.title}** ${t.description ? `- ${t.description}` : ''}\n`;
     });
     report += `\n`;
   }
@@ -238,13 +256,13 @@ function generateFallbackReport(tasks: any[], targetDate: string): string {
     report += `Não há agendamentos ou sessões confirmadas para hoje.\n\n`;
   } else {
     agendamento.forEach(t => {
-      report += `- **${t.title}** ${t.time ? `às ${t.time}` : ''} ${t.email ? `(${t.email})` : ''} - Estado: ${t.status || 'Pendente'}\n`;
+      report += `- **${t.title}** ${t.time ? `às ${t.time}` : ''} ${t.email ? `(${t.email})` : ''}\n`;
     });
     report += `\n`;
   }
 
   report += `---\n\n*Relatório gerado dinamicamente pelo Assistente Inteligente VALL. Tenha uma excelente jornada de trabalho!*`;
-  return report;
+  return cleanReportContentFields(report);
 }
 
 // Helper function to call Gemini with automatic retries and model fallback (handles 503, 429, etc.)
@@ -334,6 +352,14 @@ app.post('/api/generate-daily-report', async (req, res) => {
       }
     }
 
+    const sanitizedTasksForPrompt = filteredTasks.map(t => ({
+      title: t.title,
+      description: t.description || '',
+      category: t.category,
+      time: t.time || '',
+      email: t.email || ''
+    }));
+
     let reportContent = '';
     let isAiGenerated = false;
 
@@ -349,12 +375,15 @@ app.post('/api/generate-daily-report', async (req, res) => {
 
         Não coloque nenhuma outra seção principal além destas três. Se alguma seção não possuir registros, informe de maneira simpática e clara "Não há registros de pacientes Curinga para hoje" ou semelhante logo abaixo do título da seção pertinente. 
 
+        ATENÇÃO CRÍTICA DE ESCOPO: Sob nenhuma hipótese inclua as informações de "Estimativa" (ou Estimativa de tempo), "Prioridade", ou "Status" das tarefas no conteúdo final do relatório ou em suas listagens. Mostre apenas o título, horário e descrição se houver.
+
         Eis as tarefas cadastradas no sistema:
-        ${JSON.stringify(filteredTasks, null, 2)}
+        ${JSON.stringify(sanitizedTasksForPrompt, null, 2)}
 
         Gere uma breve introdução de bom-dia profissional e finalize desejando uma excelente jornada. Escreva tudo em Português do Brasil.`;
 
-        reportContent = await generateContentWithRetryAndFallback(prompt);
+        const geminiResult = await generateContentWithRetryAndFallback(prompt);
+        reportContent = cleanReportContentFields(geminiResult);
         isAiGenerated = true;
       } catch (geminiErr: any) {
         console.error('[API Daily Report] Gemini generateContent failed. Using offline rule-based fallback.', geminiErr.message || geminiErr);
@@ -363,6 +392,9 @@ app.post('/api/generate-daily-report', async (req, res) => {
 
     if (!reportContent) {
       reportContent = generateFallbackReport(filteredTasks, targetDate);
+    } else {
+      // Direct pass is already cleaned, but double check
+      reportContent = cleanReportContentFields(reportContent);
     }
 
     // Attempt to send report email - wrap in try/catch so SMTP failures don't block the user from seeing and copying their report
@@ -440,6 +472,14 @@ function startDailyReportScheduler() {
             const tasks = tasksSnap.docs.map(d => d.data());
             const filteredTasks = tasks.filter((t: any) => t.date === brDateString);
 
+            const sanitizedTasksForPrompt = filteredTasks.map(t => ({
+              title: t.title,
+              description: t.description || '',
+              category: t.category,
+              time: t.time || '',
+              email: t.email || ''
+            }));
+
             let reportContent = '';
             let isAiGenerated = false;
 
@@ -454,12 +494,15 @@ function startDailyReportScheduler() {
 
                 Não coloque nenhuma outra seção principal além destas três. Se alguma seção não possuir registros, informe de maneira simpática e clara "Não há registros de pacientes Curinga para hoje" ou semelhante logo abaixo do título da seção pertinente. 
 
+                ATENÇÃO CRÍTICA DE ESCOPO: Sob nenhuma hipótese inclua as informações de "Estimativa" (ou Estimativa de tempo), "Prioridade", ou "Status" das tarefas no conteúdo final do relatório ou em suas listagens. Mostre apenas o título, horário e descrição se houver.
+
                 Eis as tarefas cadastradas no sistema:
-                ${JSON.stringify(filteredTasks, null, 2)}
+                ${JSON.stringify(sanitizedTasksForPrompt, null, 2)}
 
                 Gere uma breve introdução de bom-dia profissional e finalize desejando uma excelente jornada. Escreva tudo em Português do Brasil.`;
 
-                reportContent = await generateContentWithRetryAndFallback(prompt);
+                const geminiResult = await generateContentWithRetryAndFallback(prompt);
+                reportContent = cleanReportContentFields(geminiResult);
                 isAiGenerated = true;
               } catch (geminiErr: any) {
                 console.error('[Scheduler] Gemini daily automated generator failed. falling back.', geminiErr.message || geminiErr);
@@ -468,6 +511,8 @@ function startDailyReportScheduler() {
 
             if (!reportContent) {
               reportContent = generateFallbackReport(filteredTasks, brDateString);
+            } else {
+              reportContent = cleanReportContentFields(reportContent);
             }
 
             // Send Email

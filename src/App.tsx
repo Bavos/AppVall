@@ -200,14 +200,15 @@ export default function App() {
   // Autocheck RSVP globally for tasks of the active date on load/transition to keep statuses fresh automatically
   useEffect(() => {
     if (!googleToken) return;
-    const activeDateTasks = tasks.filter(t => t.date === activeDate && t.googleEventId && t.email);
+    const activeDateTasks = tasks.filter(t => t.date === activeDate && t.googleEventId);
     if (activeDateTasks.length === 0) return;
 
     const timer = setTimeout(() => {
       const autoCheck = async () => {
         for (const task of activeDateTasks) {
           try {
-            const rsvpData = await getGoogleCalendarEventRSVP(googleToken, task.googleEventId!, task.email!);
+            const attendeeEmail = task.email || googleUser?.email || currentUser?.email || '';
+            const rsvpData = await getGoogleCalendarEventRSVP(googleToken, task.googleEventId!, attendeeEmail);
             if (rsvpData) {
               let updatedStatus = task.status;
               if (rsvpData.rsvpStatus === 'accepted' && task.status === 'Pendente') {
@@ -1064,6 +1065,7 @@ export default function App() {
             userProfile={userProfile}
             onTriggerToast={triggerToast}
             onDeleteAccount={handleDeleteAccount}
+            tasks={tasks}
             onDefineAdmin={async () => {
               if (!currentUser) return;
               const newAdminProfile = {
