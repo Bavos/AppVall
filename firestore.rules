@@ -25,7 +25,7 @@ service cloud.firestore {
     }
 
     function isSameEmail(email1, email2) {
-      return email1 == email2 || email1.matches('(?i)^' + email2 + '$');
+      return email1 is string && email2 is string && (email1 == email2 || email1.matches('(?i)^' + email2 + '$'));
     }
 
     // Validation Blueprint for Task Entity
@@ -84,6 +84,7 @@ service cloud.firestore {
           isSameEmail(resource.data.userEmail, request.auth.token.email)
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && 'adminEmail' in resource.data
             && isSameEmail(resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
           )
         );
@@ -95,6 +96,7 @@ service cloud.firestore {
           isSameEmail(request.resource.data.userEmail, request.auth.token.email)
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && 'adminEmail' in request.resource.data
             && isSameEmail(request.resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
           )
         );
@@ -108,7 +110,9 @@ service cloud.firestore {
           )
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
-            && isSameEmail(resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
+            && 'adminEmail' in resource.data
+            && 'adminEmail' in request.resource.data
+            && isSameEmail(request.resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
             && isSameEmail(request.resource.data.adminEmail, resource.data.adminEmail)
           )
         );
@@ -118,6 +122,7 @@ service cloud.firestore {
           isSameEmail(resource.data.userEmail, request.auth.token.email)
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
+            && 'adminEmail' in resource.data
             && isSameEmail(resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
           )
         );
