@@ -98,6 +98,7 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
     success: boolean;
     mocked: boolean;
     sentTo?: string;
+    error?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -194,12 +195,16 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
       if (data.success) {
         setGeneratedReportPreview(data.reportMarkdown);
         const isMocked = !!(data.emailRes && data.emailRes.mock);
+        const emailErr = data.emailRes && !data.emailRes.success ? data.emailRes.error : undefined;
         setReportSendResult({
           success: true,
           mocked: isMocked,
-          sentTo: payload.destinationEmail
+          sentTo: payload.destinationEmail,
+          error: emailErr
         });
-        if (isMocked) {
+        if (emailErr) {
+          onTriggerToast('Relatório gerado! Envio por e-mail falhou (veja dica de solução na tela).');
+        } else if (isMocked) {
           onTriggerToast('Relatório simulado no console (SMTP não configurado)');
         } else {
           onTriggerToast(`Relatório enviado com sucesso para ${payload.destinationEmail}!`);
@@ -1139,6 +1144,25 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
                   <p className="text-[10px] text-amber-200/90 leading-relaxed font-sans">
                     Como as chaves de SMTP real (<code className="font-mono bg-black/30 px-1 rounded">SMTP_HOST</code>, <code className="font-mono bg-black/30 px-1 rounded">SMTP_USER</code>, etc.) não estão preenchidas no painel de Configurações, o VALL <strong>simulou</strong> o envio do e-mail com sucesso no terminal. 
                     Você pode ler a visualização abaixo e copiar o Markdown. Para receber e-mails reais, adicione as variáveis de SMTP no menu de segredos/Configurações do AI Studio!
+                  </p>
+                </div>
+              )}
+
+              {reportSendResult && reportSendResult.error && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-left space-y-1.5 animate-in slide-in-from-top-1 duration-200">
+                  <div className="flex items-center space-x-1.5 text-red-400">
+                    <span className="text-xs font-bold font-mono">⚠️ ERRO DE ENVIO SMTP:</span>
+                  </div>
+                  <p className="text-[10px] text-red-200/90 leading-relaxed font-sans">
+                    O relatório diário foi gerado com sucesso para visualização e cópia abaixo. No entanto, o envio do e-mail falhou devido ao seguinte erro de conexão SMTP: 
+                    <br />
+                    <code className="font-mono bg-black/40 px-1 py-0.5 rounded text-red-300 block mt-1 break-all" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{reportSendResult.error}</code>
+                    <br />
+                    <strong>Dicas de solução:</strong>
+                    <ol className="list-decimal pl-4 mt-1 space-y-1">
+                      <li>Certifique-se de que as credenciais <code className="font-mono bg-black/30 px-1 py-0.5 rounded">SMTP_HOST</code>, <code className="font-mono bg-black/30 px-1 py-0.5 rounded">SMTP_PORT</code>, deve ser o e-mail completo no <code className="font-mono bg-black/30 px-1 py-0.5 rounded">SMTP_USER</code> e senha estejam corretas no menu de segredos do AI Studio.</li>
+                      <li>Se estiver usando Gmail, você <strong>não pode</strong> usar sua senha padrão de login. É obrigatório gerar uma <strong>Senha de App</strong> nas configurações de segurança do Google (2-Step Verification) e digitar essa senha de 16 letras gerada no espaço de segredo do AI Studio.</li>
+                    </ol>
                   </p>
                 </div>
               )}

@@ -439,40 +439,41 @@ export default function App() {
   }, [currentUser, firebaseUser, userProfile, focusTrigger]);
 
   // Automated background daily report checker (runs on client/browser for authentic credentials/permissions support)
+  // Evaluates every 30 seconds to ensure triggering as soon as the scheduled time is reached without page reloads.
   useEffect(() => {
     if (!currentUser || !userProfile) return;
     if (userProfile.role !== 'admin') return;
 
-    const config = userProfile.dailyReportConfig;
-    if (!config || !config.enabled) return;
-
     const emailLower = currentUser.email.toLowerCase().trim();
-    const todayBRT = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    if (config.lastSentDate === todayBRT) {
-      return;
-    }
+    const checkAndTrigger = async () => {
+      const config = userProfile.dailyReportConfig;
+      if (!config || !config.enabled) return;
 
-    // Check if the scheduled time (sendTime, defaulting to 08:00) has been reached/passed in Brasília Time (UTC-3)
-    const sendTime = config.sendTime || '08:00';
-    const [sendHour, sendMin] = sendTime.split(':').map(Number);
+      const todayBRT = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0];
+      if (config.lastSentDate === todayBRT) {
+        return;
+      }
 
-    const now = new Date();
-    const brTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-    const brHour = brTime.getUTCHours();
-    const brMin = brTime.getUTCMinutes();
+      // Check if the scheduled time (sendTime, defaulting to 08:00) has been reached/passed in Brasília Time (UTC-3)
+      const sendTime = config.sendTime || '08:00';
+      const [sendHour, sendMin] = sendTime.split(':').map(Number);
 
-    const sendMinutesTotal = sendHour * 60 + (sendMin || 0);
-    const currentMinutesTotal = brHour * 60 + brMin;
+      const now = new Date();
+      const brTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+      const brHour = brTime.getUTCHours();
+      const brMin = brTime.getUTCMinutes();
 
-    if (currentMinutesTotal < sendMinutesTotal) {
-      console.log(`[Auto Daily Report] Scheduled time ${sendTime} is in the future. Current BRT is ${brHour.toString().padStart(2,'0')}:${brMin.toString().padStart(2,'0')}.`);
-      return;
-    }
+      const sendMinutesTotal = sendHour * 60 + (sendMin || 0);
+      const currentMinutesTotal = brHour * 60 + brMin;
 
-    const triggerAutoDailyReport = async () => {
+      if (currentMinutesTotal < sendMinutesTotal) {
+        console.log(`[Auto Daily Report] Scheduled time ${sendTime} is in the future. Current BRT is ${brHour.toString().padStart(2,'0')}:${brMin.toString().padStart(2,'0')}.`);
+        return;
+      }
+
       try {
-        console.log('[Auto Daily Report] Client detected that daily report for today (' + todayBRT + ') is configured but not sent yet. Executing background trigger...');
+        console.log('[Auto Daily Report] Client detected scheduled time ' + sendTime + ' reached (' + brHour.toString().padStart(2,'0') + ':' + brMin.toString().padStart(2,'0') + ' BRT). Executing background trigger...');
         
         // 1. Fetch current tasks on client-side (where auth is authentic to satisfy security rules query limits check)
         let tasksToSend: any[] = [];
@@ -506,7 +507,8 @@ export default function App() {
         });
 
         if (response.ok) {
-          console.log('[Auto Daily Report] Successfully generated and sent background daily report.');
+          const data = await response.json();
+          console.log('[Auto Daily Report] Successfully processed background daily report. Email status details:', data.emailRes);
           
           // Prevents future runs today by writing the sent date state to profile
           const profileRef = doc(db, 'user_profiles', emailLower);
@@ -520,16 +522,23 @@ export default function App() {
 
           await setDoc(profileRef, cleanUndefined(updatedProf));
         } else {
-          console.warn('[Auto Daily Report] Remote server returned state code ' + response.status);
+          console.warn('[Auto Daily Report] Remote server returned status code ' + response.status);
         }
       } catch (triggerErr) {
         console.error('[Auto Daily Report ERROR] Failed during background client trigger:', triggerErr);
       }
     };
 
-    // Delay trigger slightly after loading to prevent race conditions or double loads in strict mode
-    const tid = setTimeout(triggerAutoDailyReport, 5000);
-    return () => clearTimeout(tid);
+    // Run initial trigger check after a brief start delay (5 seconds)
+    const startTid = setTimeout(checkAndTrigger, 5000);
+
+    // Keep checking every 30 seconds to support active open-tab workflows
+    const intervalId = setInterval(checkAndTrigger, 30000);
+
+    return () => {
+      clearTimeout(startTid);
+      clearInterval(intervalId);
+    };
   }, [currentUser, userProfile]);
 
   const handleGoogleSignIn = async () => {

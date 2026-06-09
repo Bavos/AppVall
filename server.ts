@@ -364,12 +364,18 @@ app.post('/api/generate-daily-report', async (req, res) => {
       reportContent = generateFallbackReport(filteredTasks, targetDate);
     }
 
-    // Attempt to send report email
-    const emailRes = await sendEmail({
-      to: dest,
-      subject: `[VALL] Relatório Diário - ${targetDate}`,
-      text: reportContent
-    });
+    // Attempt to send report email - wrap in try/catch so SMTP failures don't block the user from seeing and copying their report
+    let emailRes: any;
+    try {
+      emailRes = await sendEmail({
+        to: dest,
+        subject: `[VALL] Relatório Diário - ${targetDate}`,
+        text: reportContent
+      });
+    } catch (emailErr: any) {
+      console.warn('[API Daily Report] Failed to send email via SMTP, returning success with details', emailErr.message || emailErr);
+      emailRes = { success: false, error: emailErr.message || String(emailErr) };
+    }
 
     return res.json({
       success: true,
