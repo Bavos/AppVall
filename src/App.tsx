@@ -11,7 +11,7 @@ import Login from './components/Login';
 import ResetPassword from './components/ResetPassword';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { initAuth, googleSignIn, logoutGoogle, deleteGoogleCalendarEvent, db, handleFirestoreError, OperationType, cleanUndefined, auth, registerTokenExpiredCallback, getGoogleCalendarEventRSVP } from './googleAuth';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDocFromServer } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDocFromServer, getDocs } from 'firebase/firestore';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(() => {
@@ -34,6 +34,11 @@ export default function App() {
     adminEmail: string;
     password?: string;
     createdAt: string;
+    dailyReportConfig?: {
+      enabled: boolean;
+      email: string;
+      lastSentDate?: string;
+    };
   } | null>(() => {
     const saved = localStorage.getItem('vall_user_profile');
     if (saved) {
@@ -258,7 +263,8 @@ export default function App() {
           role: data.role as 'admin' | 'member',
           adminEmail: data.adminEmail,
           password: data.password,
-          createdAt: data.createdAt
+          createdAt: data.createdAt,
+          dailyReportConfig: data.dailyReportConfig
         };
         setUserProfile(prof);
         localStorage.setItem('vall_user_profile', JSON.stringify(prof));
@@ -430,6 +436,83 @@ export default function App() {
 
     return () => unsubscribe();
   }, [currentUser, firebaseUser, userProfile, focusTrigger]);
+
+  // Automated background daily report checker (runs on client/browser for authentic credentials/permissions support)
+  useEffect(() => {
+    if (!currentUser || !userProfile) return;
+    if (userProfile.role !== 'admin') return;
+
+    const config = userProfile.dailyReportConfig;
+    if (!config || !config.enabled) return;
+
+    const emailLower = currentUser.email.toLowerCase().trim();
+    const todayBRT = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    if (config.lastSentDate === todayBRT) {
+      return;
+    }
+
+    const triggerAutoDailyReport = async () => {
+      try {
+        console.log('[Auto Daily Report] Client detected that daily report for today (' + todayBRT + ') is configured but not sent yet. Executing background trigger...');
+        
+        // 1. Fetch current tasks on client-side (where auth is authentic to satisfy security rules query limits check)
+        let tasksToSend: any[] = [];
+        try {
+          const tasksCol = collection(db, 'tasks');
+          const q = query(tasksCol, where('adminEmail', '==', emailLower));
+          const tasksSnap = await getDocs(q);
+          tasksToSend = tasksSnap.docs.map(doc => doc.data());
+        } catch (dbErr) {
+          console.warn('[Auto Daily Report] Client query fallback in background send:', dbErr);
+          const cached = localStorage.getItem('vall_tasks');
+          if (cached) {
+            try { tasksToSend = JSON.parse(cached); } catch (e) {}
+          }
+        }
+
+        // 2. Post to endpoints securely
+        const payload = {
+          adminEmail: emailLower,
+          destinationEmail: config.email || emailLower,
+          selectedDate: todayBRT,
+          tasks: tasksToSend
+        };
+
+        const response = await fetch('/api/generate-daily-report', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          console.log('[Auto Daily Report] Successfully generated and sent background daily report.');
+          
+          // Prevents future runs today by writing the sent date state to profile
+          const profileRef = doc(db, 'user_profiles', emailLower);
+          const updatedProf = {
+            ...userProfile,
+            dailyReportConfig: {
+              ...config,
+              lastSentDate: todayBRT
+            }
+          };
+
+          await setDoc(profileRef, cleanUndefined(updatedProf));
+        } else {
+          console.warn('[Auto Daily Report] Remote server returned state code ' + response.status);
+        }
+      } catch (triggerErr) {
+        console.error('[Auto Daily Report ERROR] Failed during background client trigger:', triggerErr);
+      }
+    };
+
+    // Delay trigger slightly after loading to prevent race conditions or double loads in strict mode
+    const tid = setTimeout(triggerAutoDailyReport, 5000);
+    return () => clearTimeout(tid);
+  }, [currentUser, userProfile]);
 
   const handleGoogleSignIn = async () => {
     try {

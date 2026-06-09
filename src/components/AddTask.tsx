@@ -146,6 +146,54 @@ export default function AddTask({
     onChangeTab('dashboard');
   };
 
+  if (alertSuccess && lastCreated) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 text-center space-y-6" id="success_inline_container">
+        <div className="w-20 h-20 rounded-full bg-[#2DD4BF]/10 flex items-center justify-center text-[#2DD4BF] border border-[#2DD4BF]/20 animate-bounce">
+          <CheckCircle size={48} className="text-[#2DD4BF]" />
+        </div>
+        
+        <div>
+          <h3 className="text-2xl font-extrabold text-white mb-2">Operação Realizada!</h3>
+          <p className="text-sm text-gray-300 max-w-sm mx-auto leading-relaxed">
+            {lastCreated.category === 'Agendamento' && (
+              <span>O agendamento de <strong className="text-white">"{lastCreated.title}"</strong> foi gerado e salvo no cronograma diário.</span>
+            )}
+            {lastCreated.category === 'Disponível' && (
+              <span>A disponibilidade de <strong className="text-white">"{lastCreated.title}"</strong> foi registrada com sucesso.</span>
+            )}
+            {lastCreated.category === 'Curinga' && (
+              <span>O paciente Curinga <strong className="text-white">"{lastCreated.title}"</strong> foi adicionado com sucesso.</span>
+            )}
+            {lastCreated.category === 'Notas' && (
+              <span>A anotação <strong className="text-[#2DD4BF]">"{lastCreated.title}"</strong> foi guardada no histórico.</span>
+            )}
+          </p>
+        </div>
+
+        <div className="w-full max-w-xs space-y-3 pt-4 font-sans">
+          <button
+            type="button"
+            id="success_btn_agenda"
+            onClick={handleGoToAgenda}
+            className="w-full bg-[#2DD4BF] hover:bg-[#20bda8] text-black text-sm font-bold py-4 rounded-2xl transition active:scale-95 cursor-pointer flex items-center justify-center shadow-[0_4px_15px_rgba(45,212,191,0.15)] outline-none min-h-[48px]"
+          >
+            Visualizar na Agenda
+          </button>
+          
+          <button
+            type="button"
+            id="success_btn_another"
+            onClick={handleCreateAnother}
+            className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white text-sm font-semibold py-3.5 rounded-2xl transition active:scale-95 cursor-pointer flex items-center justify-center min-h-[48px]"
+          >
+            Criar Outra Atividade
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col space-y-6 pb-24">
       {/* TÍTULO DA SEÇÃO */}
@@ -155,52 +203,6 @@ export default function AddTask({
         </h2>
         <p className="text-gray-300 text-sm">Inscreva uma nova atividade operacional</p>
       </section>
-
-      {/* OVERLAY DE SUCESSO COESIVO, DIRETINHO E IMPOSSÍVEL DE PERDER (FIXED CENTERED MODAL) */}
-      {alertSuccess && lastCreated && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200" id="success_modal_overlay">
-          <div className="bg-[#0b1329] border border-[#2DD4BF]/40 text-[#2DD4BF] p-6 rounded-3xl max-w-sm w-full flex flex-col items-center text-center shadow-2xl relative animate-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center text-[#2DD4BF] mb-4 border border-emerald-500/20">
-              <Check size={36} className="text-[#2DD4BF]" />
-            </div>
-            
-            <h3 className="text-xl font-bold text-white mb-2">Operação Realizada!</h3>
-            
-            <p className="text-sm text-gray-300 px-2 leading-relaxed mb-6">
-              {lastCreated.category === 'Agendamento' && (
-                <span>O agendamento de <strong className="text-white">"{lastCreated.title}"</strong> foi gerado e salvo no cronograma diário.</span>
-              )}
-              {lastCreated.category === 'Disponível' && (
-                <span>A disponibilidade da profissional <strong className="text-white">"{lastCreated.title}"</strong> foi registrada com sucesso.</span>
-              )}
-              {lastCreated.category === 'Curinga' && (
-                <span>O paciente Curinga <strong className="text-white">"{lastCreated.title}"</strong> foi adicionado com sucesso.</span>
-              )}
-              {lastCreated.category === 'Notas' && (
-                <span>A anotação <strong className="text-white">"{lastCreated.title}"</strong> foi guardada no histórico.</span>
-              )}
-            </p>
-
-            <div className="w-full space-y-2.5">
-              <button
-                type="button"
-                onClick={handleGoToAgenda}
-                className="w-full bg-[#2DD4BF] hover:bg-[#20bda8] text-black text-sm font-bold py-3.5 px-4 rounded-xl transition active:scale-95 cursor-pointer max-h-[48px]"
-              >
-                Visualizar na Agenda
-              </button>
-              
-              <button
-                type="button"
-                onClick={handleCreateAnother}
-                className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white text-sm font-semibold py-3 px-4 rounded-xl transition active:scale-95 cursor-pointer max-h-[48px]"
-              >
-                Criar Nova Atividade
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* FORMULÁRIO */}
       <form onSubmit={handleSubmit} className="px-2 space-y-5" id="id_add_task_form">

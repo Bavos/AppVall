@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, Trash2, UserPlus, Lock, Mail, User, Info, Check, Copy } from 'lucide-react';
+import { Users, Shield, Trash2, UserPlus, Lock, Mail, User, Info, Check, Copy, Sparkles } from 'lucide-react';
 import { db, auth, handleFirestoreError, OperationType, cleanUndefined } from '../googleAuth';
-import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { updatePassword } from 'firebase/auth';
 
 interface UserProfile {
@@ -11,6 +11,11 @@ interface UserProfile {
   adminEmail: string;
   password?: string;
   createdAt: string;
+  dailyReportConfig?: {
+    enabled: boolean;
+    email: string;
+    lastSentDate?: string;
+  };
 }
 
 interface GerenciamentoProps {
@@ -73,6 +78,164 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
   const [changeConfirmPassword, setChangeConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [showChangeForm, setShowChangeForm] = useState(false);
+
+  // Daily Report Assistant States
+  const [reportEnabled, setReportEnabled] = useState<boolean>(() => {
+    return userProfile?.dailyReportConfig?.enabled || false;
+  });
+  const [reportEmail, setReportEmail] = useState<string>(() => {
+    return userProfile?.dailyReportConfig?.email || userProfile?.email || currentUser.email;
+  });
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [generatedReportPreview, setGeneratedReportPreview] = useState<string | null>(null);
+  const [isReportCopied, setIsReportCopied] = useState(false);
+  const [reportSendResult, setReportSendResult] = useState<{
+    success: boolean;
+    mocked: boolean;
+    sentTo?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (userProfile) {
+      if (userProfile.dailyReportConfig) {
+        setReportEnabled(userProfile.dailyReportConfig.enabled);
+        setReportEmail(userProfile.dailyReportConfig.email || userProfile.email);
+      } else {
+        setReportEmail(userProfile.email || currentUser.email);
+      }
+    }
+  }, [userProfile, currentUser]);
+
+  const handleSaveReportConfig = async () => {
+    if (!userProfile) return;
+    setIsSavingConfig(true);
+    try {
+      const emailLower = currentUser.email.toLowerCase();
+      const updatedProf: UserProfile = {
+        ...userProfile,
+        dailyReportConfig: {
+          enabled: reportEnabled,
+          email: reportEmail.trim() || emailLower
+        }
+      };
+
+      await setDoc(doc(db, 'user_profiles', emailLower), cleanUndefined(updatedProf));
+      localStorage.setItem('vall_user_profile', JSON.stringify(updatedProf));
+      
+      onTriggerToast('Configurações do relatório salvas com sucesso!');
+    } catch (err) {
+      console.error('Failed to save daily report config:', err);
+      onTriggerToast('Erro ao salvar as configurações do relatório.');
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
+  const handleTriggerManualReport = async () => {
+    if (!userProfile) return;
+    setIsGeneratingReport(true);
+    setGeneratedReportPreview(null);
+    setReportSendResult(null);
+    try {
+      const adminEmailLower = (userProfile.adminEmail || currentUser.email).toLowerCase().trim();
+      
+      // Fetch current tasks on client side where credentials and permissions are fully configured
+      let tasksToSend: any[] = [];
+      try {
+        console.log('[Gerenciamento] Querying tasks collection client-side...');
+        const tasksCol = collection(db, 'tasks');
+        const q = query(tasksCol, where('adminEmail', '==', adminEmailLower));
+        const tasksSnap = await getDocs(q);
+        tasksToSend = tasksSnap.docs.map(doc => doc.data());
+        console.log('[Gerenciamento] Client-side query successfully retrieved tasks count:', tasksToSend.length);
+      } catch (clientDbErr) {
+        console.warn('[Gerenciamento] Client-side firestore query failed, falling back to local copy', clientDbErr);
+        const cached = localStorage.getItem('vall_tasks');
+        if (cached) {
+          try {
+            tasksToSend = JSON.parse(cached);
+            console.log('[Gerenciamento] Recovered cached tasks count:', tasksToSend.length);
+          } catch (jsonErr) {}
+        }
+      }
+
+      const payload = {
+        adminEmail: adminEmailLower,
+        destinationEmail: reportEmail.trim() || currentUser.email,
+        selectedDate: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0],
+        tasks: tasksToSend
+      };
+
+      const res = await fetch('/api/generate-daily-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGeneratedReportPreview(data.reportMarkdown);
+        const isMocked = !!(data.emailRes && data.emailRes.mock);
+        setReportSendResult({
+          success: true,
+          mocked: isMocked,
+          sentTo: payload.destinationEmail
+        });
+        if (isMocked) {
+          onTriggerToast('Relatório simulado no console (SMTP não configurado)');
+        } else {
+          onTriggerToast(`Relatório enviado com sucesso para ${payload.destinationEmail}!`);
+        }
+      } else {
+        throw new Error(data.error || 'Erro inesperado.');
+      }
+    } catch (err: any) {
+      console.error('Failed to send on-demand daily report:', err);
+      onTriggerToast(`Erro ao gerar relatório: ${err.message || 'Erro do Servidor'}`);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleCopyReportText = () => {
+    if (!generatedReportPreview) return;
+    navigator.clipboard.writeText(generatedReportPreview);
+    setIsReportCopied(true);
+    setTimeout(() => setIsReportCopied(false), 2000);
+  };
+
+  const renderSimpleMarkdown = (text: string) => {
+    return text.split('\n').map((line, idx) => {
+      const lineTrim = line.trim();
+      if (lineTrim.startsWith('### ')) {
+        return <h3 key={idx} className="text-xs font-extrabold text-[#2DD4BF] tracking-widest uppercase mt-4 mb-2 border-b border-white/5 pb-1 font-mono">{lineTrim.replace('### ', '').trim()}</h3>;
+      }
+      if (lineTrim.startsWith('## ')) {
+        return <h2 key={idx} className="text-sm font-extrabold text-white tracking-widest uppercase mt-5 mb-2.5 font-sans">{lineTrim.replace('## ', '').trim()}</h2>;
+      }
+      if (lineTrim.startsWith('# ')) {
+        return <h1 key={idx} className="text-base font-extrabold text-white tracking-wide border-b border-[#2DD4BF]/20 pb-1 mt-6 mb-3 font-sans">{lineTrim.replace('# ', '').trim()}</h1>;
+      }
+      if (lineTrim.startsWith('- ') || lineTrim.startsWith('* ')) {
+        const formatted = lineTrim.replace(/^[-*]\s+/, '');
+        return (
+          <li key={idx} className="text-[11px] text-gray-300 ml-4 list-disc list-outside mb-1 font-sans leading-relaxed">
+            {formatted.split('**').map((part, i) => i % 2 === 1 ? <strong key={i} className="text-white font-semibold">{part}</strong> : part)}
+          </li>
+        );
+      }
+      if (lineTrim === '---') {
+        return <hr key={idx} className="border-t border-white/10 my-4" />;
+      }
+      const parts = line.split('**');
+      return (
+        <p key={idx} className="text-[11px] text-gray-300 mb-2 font-sans leading-relaxed min-h-[1.25rem]">
+          {parts.map((part, i) => i % 2 === 1 ? <strong key={i} className="text-white font-semibold">{part}</strong> : part)}
+        </p>
+      );
+    });
+  };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -824,6 +987,135 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
             </div>
           </form>
         )}
+      </div>
+
+      {/* ASSISTENTE DE RELATÓRIO DIÁRIO */}
+      <div className="glass rounded-[2rem] p-6 border border-white/10 relative overflow-hidden bg-black/40 text-left">
+        <div className="absolute -top-12 -right-12 w-32 h-32 bg-[#2DD4BF]/5 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="flex items-center space-x-3.5 mb-4 pb-3 border-b border-white/5">
+          <div className="w-10 h-10 rounded-xl bg-[#2DD4BF]/10 border border-[#2DD4BF]/20 flex items-center justify-center text-[#2DD4BF]">
+            <Sparkles size={18} className="text-[#2DD4BF]" />
+          </div>
+          <div>
+            <h2 className="font-extrabold text-sm uppercase tracking-wider text-white">Assistente de Relatório Diário</h2>
+            <p className="text-[10px] text-gray-400">Receba o resumo operacional do dia às 08:00 no seu e-mail</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <p className="text-xs text-gray-300 leading-relaxed">
+            Configure o assistente inteligente para extrair automaticamente os dados de <strong className="text-white">Curinga</strong>, <strong className="text-white">Disponível</strong> e <strong className="text-white">Agendamento</strong> do dia às 08:00 e transformá-los em um e-mail formatado em Markdown pronto para otimizar suas atividades.
+          </p>
+
+          <div className="flex items-start space-x-3 bg-white/5 p-3.5 rounded-2xl border border-white/10">
+            <input
+              type="checkbox"
+              id="reportEnabled"
+              checked={reportEnabled}
+              onChange={(e) => setReportEnabled(e.target.checked)}
+              className="w-4 h-4 rounded mt-0.5 border-white/20 bg-black/40 text-[#2DD4BF] focus:ring-0 focus:ring-offset-0 cursor-pointer accent-[#2DD4BF]"
+            />
+            <label htmlFor="reportEnabled" className="text-xs font-semibold text-gray-300 select-none cursor-pointer leading-tight">
+              Ativar envio automático do e-mail de relatório consolidado todo dia às 08:00 (Fuso de Brasília / BRT)
+            </label>
+          </div>
+
+          {reportEnabled && (
+            <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+              <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">E-mail de Destino para Envios</span>
+              <div className="flex items-center bg-white/5 border border-white/15 rounded-2xl p-2 px-3 focus-within:border-[#2DD4BF]/50">
+                <Mail className="text-gray-400 mr-2 shrink-0" size={14} />
+                <input
+                  type="email"
+                  value={reportEmail}
+                  onChange={(e) => setReportEmail(e.target.value)}
+                  placeholder="Seu e-mail de recebimento"
+                  className="bg-transparent text-xs w-full text-white border-0 outline-none focus:outline-none focus:ring-0 pt-0.5 font-sans"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-2.5 pt-1.5">
+            <button
+              type="button"
+              onClick={handleSaveReportConfig}
+              disabled={isSavingConfig}
+              className="flex-1 bg-[#2DD4BF] hover:bg-[#5eead4] disabled:opacity-50 text-black py-3 px-4 rounded-xl font-bold uppercase tracking-wider text-[10px] text-center transition cursor-pointer flex items-center justify-center space-x-1 min-h-[40px]"
+            >
+              {isSavingConfig ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin mr-1" />
+                  <span>Salvando...</span>
+                </>
+              ) : (
+                <span>Salvar Configurações</span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleTriggerManualReport}
+              disabled={isGeneratingReport}
+              className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 text-white py-3 px-4 rounded-xl font-bold uppercase tracking-wider text-[10px] text-center transition cursor-pointer flex items-center justify-center space-x-1.5 min-h-[40px]"
+            >
+              {isGeneratingReport ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1" />
+                  <span>Gerando...</span>
+                </>
+              ) : (
+                <span>Enviar Relatório de Hoje Agora</span>
+              )}
+            </button>
+          </div>
+
+          {/* PREVIEW CONTAINER */}
+          {generatedReportPreview && (
+            <div className="mt-4 p-4 rounded-2xl bg-black/60 border border-[#2DD4BF]/20 space-y-3 animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                <div className="flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[9px] text-[#2DD4BF] font-extrabold uppercase font-mono tracking-widest">Visualização do Relatório Diário</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyReportText}
+                  className="flex items-center space-x-1 text-gray-400 hover:text-[#2DD4BF] font-semibold text-[8px] uppercase tracking-wider transition cursor-pointer"
+                >
+                  {isReportCopied ? (
+                    <>
+                      <Check size={11} className="text-[#2DD4BF]" />
+                      <span className="text-[#2DD4BF]">Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={11} />
+                      <span>Copiar Markdown</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {reportSendResult && reportSendResult.mocked && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-left space-y-1.5 animate-in slide-in-from-top-1 duration-200">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-amber-400 text-xs font-bold">⚠️ Nota de Simulação (Desenvolvimento):</span>
+                  </div>
+                  <p className="text-[10px] text-amber-200/90 leading-relaxed font-sans">
+                    Como as chaves de SMTP real (<code className="font-mono bg-black/30 px-1 rounded">SMTP_HOST</code>, <code className="font-mono bg-black/30 px-1 rounded">SMTP_USER</code>, etc.) não estão preenchidas no painel de Configurações, o VALL <strong>simulou</strong> o envio do e-mail com sucesso no terminal. 
+                    Você pode ler a visualização abaixo e copiar o Markdown. Para receber e-mails reais, adicione as variáveis de SMTP no menu de segredos/Configurações do AI Studio!
+                  </p>
+                </div>
+              )}
+
+              <div className="max-h-64 overflow-y-auto pr-1 space-y-1 scrollbar-thin text-left border border-white/5 p-3 rounded-xl bg-black/30">
+                {renderSimpleMarkdown(generatedReportPreview)}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* EXCLUIR MINHA CONTA */}

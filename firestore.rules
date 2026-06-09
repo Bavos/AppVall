@@ -52,13 +52,24 @@ service cloud.firestore {
     // Validation Blueprint for UserProfile Entity
     function isValidUserProfile(data) {
       return data.keys().hasAll(['email', 'name', 'role', 'adminEmail', 'createdAt'])
-        && (data.keys().size() == 5 || (data.keys().size() == 6 && 'password' in data))
+        && (
+          data.keys().size() == 5 
+          || (data.keys().size() == 6 && ('password' in data || 'dailyReportConfig' in data))
+          || (data.keys().size() == 7 && 'password' in data && 'dailyReportConfig' in data)
+        )
         && data.email is string && data.email.size() <= 150
         && data.name is string && data.name.size() <= 150
         && data.role is string && (data.role == 'admin' || data.role == 'member')
         && data.adminEmail is string && data.adminEmail.size() <= 150
         && data.createdAt is string && data.createdAt.size() <= 50
-        && (!('password' in data) || (data.password is string && data.password.size() <= 100));
+        && (!('password' in data) || (data.password is string && data.password.size() <= 100))
+        && (!('dailyReportConfig' in data) || (
+             data.dailyReportConfig is map 
+             && data.dailyReportConfig.keys().hasAll(['enabled', 'email'])
+             && data.dailyReportConfig.enabled is bool
+             && data.dailyReportConfig.email is string
+             && (!('lastSentDate' in data.dailyReportConfig) || data.dailyReportConfig.lastSentDate is string)
+           ));
     }
 
     // Task collection
