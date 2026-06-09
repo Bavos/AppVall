@@ -246,6 +246,59 @@ function generateFallbackReport(tasks: any[], targetDate: string): string {
   return report;
 }
 
+// Helper function to call Gemini with automatic retries and model fallback (handles 503, 429, etc.)
+async function generateContentWithRetryAndFallback(prompt: string, systemInstruction?: string): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not defined');
+  }
+
+  const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: { 'User-Agent': 'aistudio-build' }
+    }
+  });
+
+  // Try models in order of preference
+  const modelsToTry = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
+  const maxRetries = 3;
+
+  for (const modelName of modelsToTry) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[Gemini API] Attempting content generation with model ${modelName} (attempt ${attempt}/${maxRetries})...`);
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: systemInstruction ? { systemInstruction } : undefined
+        });
+
+        if (response.text) {
+          console.log(`[Gemini API] Successfully generated content using ${modelName} on attempt ${attempt}`);
+          return response.text;
+        }
+      } catch (err: any) {
+        const errMessage = err?.message || String(err);
+        const isTransient = errMessage.includes('503') || errMessage.includes('429') || errMessage.includes('UNAVAILABLE') || errMessage.includes('RESOURCE_EXHAUSTED') || errMessage.includes('high demand');
+        
+        console.warn(`[Gemini API] Error using ${modelName} on attempt ${attempt}: ${errMessage}`);
+        
+        if (isTransient && attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, etc.
+          console.log(`[Gemini API] Transient error encountered. Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          // If it's not transient or we ran out of retries, break to try the next model
+          break;
+        }
+      }
+    }
+  }
+
+  throw new Error('All Gemini API models and retry attempts failed.');
+}
+
 // POST endpoint to trigger the Daily Report generation manually from the UI tab for preview/on-demand tests
 app.post('/api/generate-daily-report', async (req, res) => {
   const { adminEmail, destinationEmail, selectedDate } = req.body;
@@ -261,22 +314,22 @@ app.post('/api/generate-daily-report', async (req, res) => {
 
     console.log(`[API Daily Report] Manual trigger requested for admin ${adminEmailLower}, date ${targetDate}`);
 
-    // Fetch tasks
+    // Fetch tasks - prefer client payload to respect Firestore permissions and avoid server-side credential issues in sandbox
     let filteredTasks: any[] = [];
-    try {
-      const tasksSnap = await db.collection('tasks')
-        .where('adminEmail', '==', adminEmailLower)
-        .get();
-      const tasks = tasksSnap.docs.map(docSnap => docSnap.data());
-      filteredTasks = tasks.filter((t: any) => t.date === targetDate);
-      console.log(`[API Daily Report] Successfully fetched ${filteredTasks.length} tasks from Firestore for ${targetDate}`);
-    } catch (dbErr: any) {
-      console.warn('[API Daily Report] Failed to fetch tasks from Firestore. Attempting payload fallback...', dbErr.message);
-      if (req.body.tasks && Array.isArray(req.body.tasks)) {
-        filteredTasks = req.body.tasks.filter((t: any) => t.date === targetDate);
-        console.log(`[API Daily Report] Recovered ${filteredTasks.length} tasks from request payload.`);
-      } else {
-        console.warn('[API Daily Report] No tasks array available in request payload either. Generating report with empty task list.');
+    if (req.body.tasks && Array.isArray(req.body.tasks)) {
+      filteredTasks = req.body.tasks.filter((t: any) => t.date === targetDate);
+      console.log(`[API Daily Report] Successfully received and filtered ${filteredTasks.length} tasks from request payload for ${targetDate}.`);
+    } else {
+      try {
+        console.log(`[API Daily Report] No tasks array in body. Attempting direct Firestore fetch...`);
+        const tasksSnap = await db.collection('tasks')
+          .where('adminEmail', '==', adminEmailLower)
+          .get();
+        const tasks = tasksSnap.docs.map(docSnap => docSnap.data());
+        filteredTasks = tasks.filter((t: any) => t.date === targetDate);
+        console.log(`[API Daily Report] Successfully fetched ${filteredTasks.length} tasks from Firestore for ${targetDate}`);
+      } catch (dbErr: any) {
+        console.warn('[API Daily Report] Failed to fetch tasks from Firestore direct collection.', dbErr.message);
       }
     }
 
@@ -286,13 +339,6 @@ app.post('/api/generate-daily-report', async (req, res) => {
     // Use Gemini if available
     if (process.env.GEMINI_API_KEY) {
       try {
-        const ai = new GoogleGenAI({
-          apiKey: process.env.GEMINI_API_KEY,
-          httpOptions: {
-            headers: { 'User-Agent': 'aistudio-build' }
-          }
-        });
-
         const prompt = `Você é o Assistente do Relatório Diário do aplicativo VALL. Seu papel é analisar a lista de tarefas/atividades abaixo para o dia ${targetDate} e transformá-los em um e-mail estruturado e formatado em Markdown com design amigável e profissional.
         
         Você DEVE organizar o texto ESTRITAMENTE em três seções Markdown de nível h3, nesta exata grafia:
@@ -307,17 +353,10 @@ app.post('/api/generate-daily-report', async (req, res) => {
 
         Gere uma breve introdução de bom-dia profissional e finalize desejando uma excelente jornada. Escreva tudo em Português do Brasil.`;
 
-        const geminiRes = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
-          contents: prompt
-        });
-
-        if (geminiRes.text) {
-          reportContent = geminiRes.text;
-          isAiGenerated = true;
-        }
+        reportContent = await generateContentWithRetryAndFallback(prompt);
+        isAiGenerated = true;
       } catch (geminiErr: any) {
-        console.error('[API Daily Report] Gemini generateContent failed. Using offline rule-based fallback.', geminiErr);
+        console.error('[API Daily Report] Gemini generateContent failed. Using offline rule-based fallback.', geminiErr.message || geminiErr);
       }
     }
 
@@ -347,9 +386,9 @@ app.post('/api/generate-daily-report', async (req, res) => {
   }
 });
 
-// Setup automated background cron checker to check and trigger report at exactly 08:00 each day (Brazil UTC-3)
+// Setup automated background cron checker to check and trigger report at the custom configured hour each day (Brazil UTC-3)
 function startDailyReportScheduler() {
-  console.log('[Scheduler] Initializing automated daily report check at 08:00 AM (BRT time zone)...');
+  console.log('[Scheduler] Initializing automated daily report check loop (runs every minute and respects custom time config, default 08:00 BRT)...');
   
   // Running a check every 60 seconds
   setInterval(async () => {
@@ -359,30 +398,32 @@ function startDailyReportScheduler() {
       const brTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
       const hours = brTime.getUTCHours();
       const minutes = brTime.getUTCMinutes();
+      const brTimeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      const brDateString = brTime.toISOString().split('T')[0];
 
-      // Detect exactly 08:00 AM in Brazil Time
-      if (hours === 8 && minutes === 0) {
-        const brDateString = brTime.toISOString().split('T')[0];
-        console.log(`[Scheduler] Clock is 08:00 AM (BRT) for date: ${brDateString}. Scanning user profiles...`);
+      const profilesSnap = await db.collection('user_profiles').get();
+      for (const docProf of profilesSnap.docs) {
+        const profile = docProf.data();
+        const reportConfig = profile.dailyReportConfig;
 
-        const profilesSnap = await db.collection('user_profiles').get();
-        for (const docProf of profilesSnap.docs) {
-          const profile = docProf.data();
-          const reportConfig = profile.dailyReportConfig;
+        // Process only if configuration exists, is enabled, and is scheduled for this exact minute
+        if (reportConfig && reportConfig.enabled) {
+          const sendTime = reportConfig.sendTime || '08:00';
+          if (sendTime !== brTimeString) {
+            continue;
+          }
 
-          // Process only if configuration exists, is enabled, and was not already sent today
-          if (reportConfig && reportConfig.enabled) {
-            const adminEmail = (profile.adminEmail || profile.email || '').toLowerCase().trim();
-            const destEmail = (reportConfig.email || profile.email || '').trim();
+          const adminEmail = (profile.adminEmail || profile.email || '').toLowerCase().trim();
+          const destEmail = (reportConfig.email || profile.email || '').trim();
 
-            if (!adminEmail) continue;
+          if (!adminEmail) continue;
 
-            if (reportConfig.lastSentDate === brDateString) {
-              console.log(`[Scheduler] Daily report for ${adminEmail} was already sent today (${brDateString}). Skipping.`);
-              continue;
-            }
+          if (reportConfig.lastSentDate === brDateString) {
+            console.log(`[Scheduler] Daily report for ${adminEmail} was already sent today (${brDateString}). Skipping.`);
+            continue;
+          }
 
-            console.log(`[Scheduler] Generating automatized report of ${brDateString} for ${adminEmail} to ${destEmail}...`);
+          console.log(`[Scheduler] Clock is ${brTimeString} (BRT) matching scheduled sendTime ${sendTime}. Generating automatized report of ${brDateString} for ${adminEmail} to ${destEmail}...`);
 
             // Fetch tasks for the admin email
             const tasksSnap = await db.collection('tasks')
@@ -397,13 +438,6 @@ function startDailyReportScheduler() {
 
             if (process.env.GEMINI_API_KEY) {
               try {
-                const ai = new GoogleGenAI({
-                  apiKey: process.env.GEMINI_API_KEY,
-                  httpOptions: {
-                    headers: { 'User-Agent': 'aistudio-build' }
-                  }
-                });
-
                 const prompt = `Você é o Assistente do Relatório Diário do aplicativo VALL. Seu papel é analisar a lista de tarefas/atividades abaixo para o dia ${brDateString} e transformá-los em um e-mail estruturado e formatado em Markdown com design amigável e profissional.
                 
                 Você DEVE organizar o texto ESTRITAMENTE em três seções Markdown de nível h3, nesta exata grafia:
@@ -418,17 +452,10 @@ function startDailyReportScheduler() {
 
                 Gere uma breve introdução de bom-dia profissional e finalize desejando uma excelente jornada. Escreva tudo em Português do Brasil.`;
 
-                const geminiRes = await ai.models.generateContent({
-                  model: 'gemini-3.5-flash',
-                  contents: prompt
-                });
-
-                if (geminiRes.text) {
-                  reportContent = geminiRes.text;
-                  isAiGenerated = true;
-                }
-              } catch (geminiErr) {
-                console.error('[Scheduler] Gemini daily automated generator failed. falling back.', geminiErr);
+                reportContent = await generateContentWithRetryAndFallback(prompt);
+                isAiGenerated = true;
+              } catch (geminiErr: any) {
+                console.error('[Scheduler] Gemini daily automated generator failed. falling back.', geminiErr.message || geminiErr);
               }
             }
 
@@ -451,8 +478,7 @@ function startDailyReportScheduler() {
             console.log(`[Scheduler] Automated report successfully sent to ${destEmail}`);
           }
         }
-      }
-    } catch (schedErr: any) {
+      } catch (schedErr: any) {
       if (schedErr?.message?.includes('PERMISSION_DENIED')) {
         console.log('[Scheduler] Background direct DB scan restricted by security rules (expected in sandbox). Automated reports are managed safely and reliably in background via active administrator web sessions.');
       } else {

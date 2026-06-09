@@ -18,7 +18,11 @@ export function cleanUndefined<T extends object>(obj: T): T {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const val = obj[key];
       if (val !== undefined && val !== null) {
-        clean[key] = val;
+        if (typeof val === 'object' && !Array.isArray(val) && val !== null) {
+          clean[key] = cleanUndefined(val);
+        } else {
+          clean[key] = val;
+        }
       }
     }
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, Trash2, UserPlus, Lock, Mail, User, Info, Check, Copy, Sparkles } from 'lucide-react';
+import { Users, Shield, Trash2, UserPlus, Lock, Mail, User, Info, Check, Copy, Sparkles, Clock } from 'lucide-react';
 import { db, auth, handleFirestoreError, OperationType, cleanUndefined } from '../googleAuth';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { updatePassword } from 'firebase/auth';
@@ -14,6 +14,7 @@ interface UserProfile {
   dailyReportConfig?: {
     enabled: boolean;
     email: string;
+    sendTime?: string;
     lastSentDate?: string;
   };
 }
@@ -84,7 +85,10 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
     return userProfile?.dailyReportConfig?.enabled || false;
   });
   const [reportEmail, setReportEmail] = useState<string>(() => {
-    return userProfile?.dailyReportConfig?.email || userProfile?.email || currentUser.email;
+    return currentUser.email.toLowerCase(); // Strictly lock to logged in user's email
+  });
+  const [reportSendTime, setReportSendTime] = useState<string>(() => {
+    return userProfile?.dailyReportConfig?.sendTime || '08:00';
   });
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -97,12 +101,13 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
   } | null>(null);
 
   useEffect(() => {
+    setReportEmail(currentUser.email.toLowerCase());
     if (userProfile) {
       if (userProfile.dailyReportConfig) {
         setReportEnabled(userProfile.dailyReportConfig.enabled);
-        setReportEmail(userProfile.dailyReportConfig.email || userProfile.email);
+        setReportSendTime(userProfile.dailyReportConfig.sendTime || '08:00');
       } else {
-        setReportEmail(userProfile.email || currentUser.email);
+        setReportSendTime('08:00');
       }
     }
   }, [userProfile, currentUser]);
@@ -116,7 +121,8 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
         ...userProfile,
         dailyReportConfig: {
           enabled: reportEnabled,
-          email: reportEmail.trim() || emailLower
+          email: emailLower, // Locked to user's login email
+          sendTime: reportSendTime
         }
       };
 
@@ -999,13 +1005,13 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
           </div>
           <div>
             <h2 className="font-extrabold text-sm uppercase tracking-wider text-white">Assistente de Relatório Diário</h2>
-            <p className="text-[10px] text-gray-400">Receba o resumo operacional do dia às 08:00 no seu e-mail</p>
+            <p className="text-[10px] text-gray-400">Receba o resumo operacional do dia às {reportSendTime} no seu e-mail</p>
           </div>
         </div>
 
         <div className="space-y-4">
           <p className="text-xs text-gray-300 leading-relaxed">
-            Configure o assistente inteligente para extrair automaticamente os dados de <strong className="text-white">Curinga</strong>, <strong className="text-white">Disponível</strong> e <strong className="text-white">Agendamento</strong> do dia às 08:00 e transformá-los em um e-mail formatado em Markdown pronto para otimizar suas atividades.
+            Configure o assistente inteligente para extrair automaticamente os dados de <strong className="text-white">Curinga</strong>, <strong className="text-white">Disponível</strong> e <strong className="text-white">Agendamento</strong> e transformá-los em um e-mail formatado em Markdown às <strong className="text-white">{reportSendTime}</strong> pronto para otimizar suas atividades.
           </p>
 
           <div className="flex items-start space-x-3 bg-white/5 p-3.5 rounded-2xl border border-white/10">
@@ -1017,22 +1023,38 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
               className="w-4 h-4 rounded mt-0.5 border-white/20 bg-black/40 text-[#2DD4BF] focus:ring-0 focus:ring-offset-0 cursor-pointer accent-[#2DD4BF]"
             />
             <label htmlFor="reportEnabled" className="text-xs font-semibold text-gray-300 select-none cursor-pointer leading-tight">
-              Ativar envio automático do e-mail de relatório consolidado todo dia às 08:00 (Fuso de Brasília / BRT)
+              Ativar envio automático do e-mail de relatório consolidado todo dia às {reportSendTime} (Fuso de Brasília / BRT)
             </label>
           </div>
 
           {reportEnabled && (
-            <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
-              <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">E-mail de Destino para Envios</span>
-              <div className="flex items-center bg-white/5 border border-white/15 rounded-2xl p-2 px-3 focus-within:border-[#2DD4BF]/50">
-                <Mail className="text-gray-400 mr-2 shrink-0" size={14} />
-                <input
-                  type="email"
-                  value={reportEmail}
-                  onChange={(e) => setReportEmail(e.target.value)}
-                  placeholder="Seu e-mail de recebimento"
-                  className="bg-transparent text-xs w-full text-white border-0 outline-none focus:outline-none focus:ring-0 pt-0.5 font-sans"
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="space-y-1.5">
+                <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">Horário de Envio (BRT)</span>
+                <div className="flex items-center bg-white/5 border border-white/15 rounded-2xl p-2 px-3 focus-within:border-[#2DD4BF]/50">
+                  <Clock className="text-gray-400 mr-2 shrink-0" size={14} />
+                  <input
+                    type="time"
+                    value={reportSendTime}
+                    onChange={(e) => setReportSendTime(e.target.value)}
+                    required
+                    className="bg-transparent text-xs w-full text-white border-0 outline-none focus:outline-none focus:ring-0 pt-0.5 font-mono cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest pl-1 block">E-mail de Destino para Envios</span>
+                <div className="flex items-center bg-white/5 border border-white/10 rounded-2xl p-2 px-3 opacity-60">
+                  <Mail className="text-gray-400 mr-2 shrink-0" size={14} />
+                  <input
+                    type="email"
+                    value={currentUser.email}
+                    disabled
+                    placeholder="Seu e-mail de login"
+                    className="bg-transparent text-xs w-full text-gray-400 border-0 outline-none focus:outline-none focus:ring-0 pt-0.5 font-sans cursor-not-allowed"
+                  />
+                </div>
               </div>
             </div>
           )}

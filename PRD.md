@@ -100,8 +100,9 @@ Cada tarefa emite um modelo de dados refinado integrado à agenda do usuário, s
 - **Métricas de Fechamento**: Registro automatizado da relação `Tempo Estimado vs. Tempo Real Executado` (`estimatedMinutes` vs `actualMinutes`), permitindo ao gestor avaliar e calibrar o esforço de cada colaborador no painel de estatísticas.
 
 ### 4.4 Gerador de Relatórios Diários Inteligentes (Gemini + SMTP Engine)
-- **Geração por Demanda**: No painel de gerenciamento, o administrador escolhe um e-mail de destino e aciona o relatório operacional de qualquer data. O sistema reúne as tarefas e anotações, processa-as em linguagem natural através da IA do Gemini e formata uma síntese executiva.
-- **Execução Background Autônoma (Client-Driven Sync)**: Para evitar bloqueios severos de conexão das regras de segurança de contas de serviços internas do Google Cloud em áreas isoladas da visualização web, os navegadores dos administradores ativos monitoram a virada de data automaticamente. Ao detectar um novo período que requer fechamento diário, o client extrai o lote de dados autoritativamente e aciona a API de envio em background de forma segura e imediata.
+- **Geração por Demanda e Configuração Flexível**: No painel de gerenciamento, o administrador pode parametrizar o horário customizado de envio automático do relatório (ex: `08:00`, `19:30`, fuso de Brasília (BRT / UTC-3)). O e-mail destinatário é fixado por segurança ao e-mail de login autenticado (sem possibilidade de edição), impedindo vazamentos ou envios indesejados para correios externos. O sistema reúne as tarefas e anotações e formata uma síntese executiva de nível profissional.
+- **Resiliência e Escalaridade da IA**: O motor de inteligência artificial conta com um pipeline de tentativas automático com backoff exponencial e fallback dinâmico de modelos generativos (chaveando inteligentemente de `gemini-3.5-flash` para `gemini-3.1-flash-lite`). Isso neutraliza gargalos de alta demanda ("UNAVAILABLE", erro 503 ou 429) e garante a entrega ininterrupta dos resumos.
+- **Execução Background Autônoma & Segurança**: Para garantir o envio regular sem as barreiras e restrições de permissões das contas de serviço do Cloud local no sandbox, o sistema emprega uma arquitetura híbrida: um loop de agendamento em background no servidor operando a cada minuto monitora e aciona os perfis, e os clients (navegadores) ativos dos administradores atuam como ativadores secundários transmitindo os lotes de tarefas autoritativamente para a API.
 - **Entrega SMTP Robustecida**: O motor suporta chaves e credenciais contendo caracteres especiais com tratamento especial de codificação que previne falhas de autolimitação e falha de login (Erro 535) nas conexões de servidores de correio padrão Corporativos e Gmail App Passwords.
 
 ---
@@ -122,7 +123,8 @@ Cada perfil reside no documento correspondente ao e-mail lowercase do usuário.
   "createdAt": "2026-06-09T02:00:00Z",
   "dailyReportConfig": {
     "enabled": true,
-    "email": "supervisor@empresa.com",
+    "email": "administrador@empresa.com",
+    "sendTime": "08:00",
     "lastSentDate": "2026-06-08"
   }
 }

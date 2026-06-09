@@ -37,6 +37,7 @@ export default function App() {
     dailyReportConfig?: {
       enabled: boolean;
       email: string;
+      sendTime?: string;
       lastSentDate?: string;
     };
   } | null>(() => {
@@ -449,6 +450,23 @@ export default function App() {
     const todayBRT = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     if (config.lastSentDate === todayBRT) {
+      return;
+    }
+
+    // Check if the scheduled time (sendTime, defaulting to 08:00) has been reached/passed in Brasília Time (UTC-3)
+    const sendTime = config.sendTime || '08:00';
+    const [sendHour, sendMin] = sendTime.split(':').map(Number);
+
+    const now = new Date();
+    const brTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const brHour = brTime.getUTCHours();
+    const brMin = brTime.getUTCMinutes();
+
+    const sendMinutesTotal = sendHour * 60 + (sendMin || 0);
+    const currentMinutesTotal = brHour * 60 + brMin;
+
+    if (currentMinutesTotal < sendMinutesTotal) {
+      console.log(`[Auto Daily Report] Scheduled time ${sendTime} is in the future. Current BRT is ${brHour.toString().padStart(2,'0')}:${brMin.toString().padStart(2,'0')}.`);
       return;
     }
 
