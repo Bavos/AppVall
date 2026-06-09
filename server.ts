@@ -43,9 +43,12 @@ async function sendEmail({ to, subject, text }: { to: string; subject: string; t
       host,
       port,
       secure: port === 465,
-      auth: { user, pass }
+      auth: { user, pass },
+      connectionTimeout: 4000,
+      greetingTimeout: 4000,
+      socketTimeout: 4000
     });
-    console.log(`[Email] Configured custom SMTP: ${host}`);
+    console.log(`[Email] Configured custom SMTP: ${host} with 4000ms timeouts`);
   } else {
     try {
       console.log(`[MOCK EMAIL LOG]
@@ -57,7 +60,7 @@ ${text}
 `);
       return { success: true, mock: true };
     } catch (testAccountError) {
-      console.warn('[Email] Failed to create Ethereal test account, logging in stdout', testAccountError);
+      console.log('[Email] Failed to create Ethereal test account, logging in stdout', testAccountError);
       console.log(`[MOCK EMAIL LOG]
 TO: ${to}
 FROM: ${from}
@@ -77,16 +80,21 @@ ${text}
     html: text.replace(/\n/g, '<br>')
   };
 
-  const info = await transporter.sendMail(mailOptions);
-  console.log(`[Email] Sent successfully: ${info.messageId}`);
-  
-  const previewUrl = nodemailer.getTestMessageUrl(info);
-  if (previewUrl) {
-    console.log(`[Email] Ethereal preview link: ${previewUrl}`);
-    return { success: true, previewUrl, messageId: info.messageId };
-  }
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[Email] Sent successfully: ${info.messageId}`);
+    
+    const previewUrl = nodemailer.getTestMessageUrl(info);
+    if (previewUrl) {
+      console.log(`[Email] Ethereal preview link: ${previewUrl}`);
+      return { success: true, previewUrl, messageId: info.messageId };
+    }
 
-  return { success: true, messageId: info.messageId };
+    return { success: true, messageId: info.messageId };
+  } catch (err: any) {
+    console.log(`[Email Info] SMTP send failed (user might have disabled, expired, or invalid credentials): ${err.message || err}`);
+    return { success: false, error: err.message || String(err) };
+  }
 }
 
 // REST API for User Registration and Onboarding Emails
@@ -205,68 +213,10 @@ app.post('/api/login-fallback', async (req, res) => {
   }
 });
 
-// Helper for Daily Operational Report plaintext / markdown fallback format
-function cleanReportContentFields(text: string): string {
-  if (!text) return text;
-  return text
-    .split('\n')
-    .filter(line => {
-      const lower = line.toLowerCase();
-      // Filter lines that look like key-value bullets for Estimativa, Prioridade, Status, or Estado
-      const hasKey = lower.includes('estimativa') || lower.includes('prioridade') || lower.includes('status') || lower.includes('estado') || lower.includes('estimatedminutes') || lower.includes('priority');
-      const isBulletOrBold = line.trim().startsWith('*') || line.trim().startsWith('-') || line.trim().startsWith('•') || lower.includes('**');
-      
-      if (hasKey && isBulletOrBold) {
-        return false;
-      }
-      return true;
-    })
-    .join('\n');
-}
 
-function generateFallbackReport(tasks: any[], targetDate: string): string {
-  const curinga = tasks.filter(t => t.category === 'Curinga');
-  const disponivel = tasks.filter(t => t.category === 'Disponível');
-  const agendamento = tasks.filter(t => t.category === 'Agendamento');
-
-  let report = `### Olá! Aqui está o seu relatório diário de atividades do sistema VALL para o dia ${targetDate}.\n\n`;
-
-  report += `### **Curinga**\n`;
-  if (curinga.length === 0) {
-    report += `Não há registros de pacientes Curinga para hoje.\n\n`;
-  } else {
-    curinga.forEach(t => {
-      report += `- **${t.title}** ${t.description ? `- ${t.description}` : ''}\n`;
-    });
-    report += `\n`;
-  }
-
-  report += `### **Disponível**\n`;
-  if (disponivel.length === 0) {
-    report += `Não há profissionais com horários marcados como Disponível para hoje.\n\n`;
-  } else {
-    disponivel.forEach(t => {
-      report += `- **${t.title}** ${t.time ? `às ${t.time}` : ''} ${t.description ? `- ${t.description}` : ''}\n`;
-    });
-    report += `\n`;
-  }
-
-  report += `### **Agendamento**\n`;
-  if (agendamento.length === 0) {
-    report += `Não há agendamentos ou sessões confirmadas para hoje.\n\n`;
-  } else {
-    agendamento.forEach(t => {
-      report += `- **${t.title}** ${t.time ? `às ${t.time}` : ''} ${t.email ? `(${t.email})` : ''}\n`;
-    });
-    report += `\n`;
-  }
-
-  report += `---\n\n*Relatório gerado dinamicamente pelo Assistente Inteligente VALL. Tenha uma excelente jornada de trabalho!*`;
-  return cleanReportContentFields(report);
-}
 
 // Helper function to call Gemini with automatic retries and model fallback (handles 503, 429, etc.)
-async function generateContentWithRetryAndFallback(prompt: string, systemInstruction?: string): Promise<string> {
+async function generateContentWithRetryAndFallback(prompt: string, systemInstruction?: string, maxRetries = 2): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not defined');
@@ -279,9 +229,8 @@ async function generateContentWithRetryAndFallback(prompt: string, systemInstruc
     }
   });
 
-  // Try models in order of preference
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.5-pro'];
-  const maxRetries = 3;
+  // Try models in order of preference (using supported gemini-3.5-flash and gemini-3.1-flash-lite)
+  const modelsToTry = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
 
   for (const modelName of modelsToTry) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -318,227 +267,7 @@ async function generateContentWithRetryAndFallback(prompt: string, systemInstruc
   throw new Error('All Gemini API models and retry attempts failed.');
 }
 
-// POST endpoint to trigger the Daily Report generation manually from the UI tab for preview/on-demand tests
-app.post('/api/generate-daily-report', async (req, res) => {
-  const { adminEmail, destinationEmail, selectedDate } = req.body;
 
-  if (!adminEmail) {
-    return res.status(400).json({ error: 'O parâmetro adminEmail é obrigatório.' });
-  }
-
-  try {
-    const adminEmailLower = adminEmail.toLowerCase().trim();
-    const dest = destinationEmail ? destinationEmail.trim() : adminEmailLower;
-    const targetDate = selectedDate || new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-    console.log(`[API Daily Report] Manual trigger requested for admin ${adminEmailLower}, date ${targetDate}`);
-
-    // Fetch tasks - prefer client payload to respect Firestore permissions and avoid server-side credential issues in sandbox
-    let filteredTasks: any[] = [];
-    if (req.body.tasks && Array.isArray(req.body.tasks)) {
-      filteredTasks = req.body.tasks.filter((t: any) => t.date === targetDate);
-      console.log(`[API Daily Report] Successfully received and filtered ${filteredTasks.length} tasks from request payload for ${targetDate}.`);
-    } else {
-      try {
-        console.log(`[API Daily Report] No tasks array in body. Attempting direct Firestore fetch...`);
-        const tasksSnap = await db.collection('tasks')
-          .where('adminEmail', '==', adminEmailLower)
-          .get();
-        const tasks = tasksSnap.docs.map(docSnap => docSnap.data());
-        filteredTasks = tasks.filter((t: any) => t.date === targetDate);
-        console.log(`[API Daily Report] Successfully fetched ${filteredTasks.length} tasks from Firestore for ${targetDate}`);
-      } catch (dbErr: any) {
-        console.warn('[API Daily Report] Failed to fetch tasks from Firestore direct collection.', dbErr.message);
-      }
-    }
-
-    const sanitizedTasksForPrompt = filteredTasks.map(t => ({
-      title: t.title,
-      description: t.description || '',
-      category: t.category,
-      time: t.time || '',
-      email: t.email || ''
-    }));
-
-    let reportContent = '';
-    let isAiGenerated = false;
-
-    // Use Gemini if available
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        const prompt = `Você é o Assistente do Relatório Diário do aplicativo VALL. Seu papel é analisar a lista de tarefas/atividades abaixo para o dia ${targetDate} e transformá-los em um e-mail estruturado e formatado em Markdown com design amigável e profissional.
-        
-        Você DEVE organizar o texto ESTRITAMENTE em três seções Markdown de nível h3, nesta exata grafia:
-        ### Curinga
-        ### Disponível
-        ### Agendamento
-
-        Não coloque nenhuma outra seção principal além destas três. Se alguma seção não possuir registros, informe de maneira simpática e clara "Não há registros de pacientes Curinga para hoje" ou semelhante logo abaixo do título da seção pertinente. 
-
-        ATENÇÃO CRÍTICA DE ESCOPO: Sob nenhuma hipótese inclua as informações de "Estimativa" (ou Estimativa de tempo), "Prioridade", ou "Status" das tarefas no conteúdo final do relatório ou em suas listagens. Mostre apenas o título, horário e descrição se houver.
-
-        Eis as tarefas cadastradas no sistema:
-        ${JSON.stringify(sanitizedTasksForPrompt, null, 2)}
-
-        Gere uma breve introdução de bom-dia profissional e finalize desejando uma excelente jornada. Escreva tudo em Português do Brasil.`;
-
-        const geminiResult = await generateContentWithRetryAndFallback(prompt);
-        reportContent = cleanReportContentFields(geminiResult);
-        isAiGenerated = true;
-      } catch (geminiErr: any) {
-        console.error('[API Daily Report] Gemini generateContent failed. Using offline rule-based fallback.', geminiErr.message || geminiErr);
-      }
-    }
-
-    if (!reportContent) {
-      reportContent = generateFallbackReport(filteredTasks, targetDate);
-    } else {
-      // Direct pass is already cleaned, but double check
-      reportContent = cleanReportContentFields(reportContent);
-    }
-
-    // Attempt to send report email - wrap in try/catch so SMTP failures don't block the user from seeing and copying their report
-    let emailRes: any;
-    try {
-      emailRes = await sendEmail({
-        to: dest,
-        subject: `[VALL] Relatório Diário - ${targetDate}`,
-        text: reportContent
-      });
-    } catch (emailErr: any) {
-      console.warn('[API Daily Report] Failed to send email via SMTP, returning success with details', emailErr.message || emailErr);
-      emailRes = { success: false, error: emailErr.message || String(emailErr) };
-    }
-
-    return res.json({
-      success: true,
-      reportMarkdown: reportContent,
-      isAiGenerated,
-      sentTo: dest,
-      tasksCount: filteredTasks.length,
-      emailRes
-    });
-
-  } catch (err: any) {
-    console.error('[API Daily Report Error] manual generation failed:', err);
-    return res.status(500).json({ error: 'Erro ao processar relatório diário.', details: err.message });
-  }
-});
-
-// Setup automated background cron checker to check and trigger report at the custom configured hour each day (Brazil UTC-3)
-function startDailyReportScheduler() {
-  console.log('[Scheduler] Initializing automated daily report check loop (runs every minute and respects custom time config, default 08:00 BRT)...');
-  
-  // Running a check every 60 seconds
-  setInterval(async () => {
-    try {
-      const now = new Date();
-      // Adjust from Server Time (UTC) to Brazil Brasilia Time (UTC-3)
-      const brTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-      const hours = brTime.getUTCHours();
-      const minutes = brTime.getUTCMinutes();
-      const brTimeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-      const brDateString = brTime.toISOString().split('T')[0];
-
-      const profilesSnap = await db.collection('user_profiles').get();
-      for (const docProf of profilesSnap.docs) {
-        const profile = docProf.data();
-        const reportConfig = profile.dailyReportConfig;
-
-        // Process only if configuration exists, is enabled, and is scheduled for this exact minute
-        if (reportConfig && reportConfig.enabled) {
-          const sendTime = reportConfig.sendTime || '08:00';
-          if (sendTime !== brTimeString) {
-            continue;
-          }
-
-          const adminEmail = (profile.adminEmail || profile.email || '').toLowerCase().trim();
-          const destEmail = (reportConfig.email || profile.email || '').trim();
-
-          if (!adminEmail) continue;
-
-          if (reportConfig.lastSentDate === brDateString) {
-            console.log(`[Scheduler] Daily report for ${adminEmail} was already sent today (${brDateString}). Skipping.`);
-            continue;
-          }
-
-          console.log(`[Scheduler] Clock is ${brTimeString} (BRT) matching scheduled sendTime ${sendTime}. Generating automatized report of ${brDateString} for ${adminEmail} to ${destEmail}...`);
-
-            // Fetch tasks for the admin email
-            const tasksSnap = await db.collection('tasks')
-              .where('adminEmail', '==', adminEmail)
-              .get();
-
-            const tasks = tasksSnap.docs.map(d => d.data());
-            const filteredTasks = tasks.filter((t: any) => t.date === brDateString);
-
-            const sanitizedTasksForPrompt = filteredTasks.map(t => ({
-              title: t.title,
-              description: t.description || '',
-              category: t.category,
-              time: t.time || '',
-              email: t.email || ''
-            }));
-
-            let reportContent = '';
-            let isAiGenerated = false;
-
-            if (process.env.GEMINI_API_KEY) {
-              try {
-                const prompt = `Você é o Assistente do Relatório Diário do aplicativo VALL. Seu papel é analisar a lista de tarefas/atividades abaixo para o dia ${brDateString} e transformá-los em um e-mail estruturado e formatado em Markdown com design amigável e profissional.
-                
-                Você DEVE organizar o texto ESTRITAMENTE em três seções Markdown de nível h3, nesta exata grafia:
-                ### Curinga
-                ### Disponível
-                ### Agendamento
-
-                Não coloque nenhuma outra seção principal além destas três. Se alguma seção não possuir registros, informe de maneira simpática e clara "Não há registros de pacientes Curinga para hoje" ou semelhante logo abaixo do título da seção pertinente. 
-
-                ATENÇÃO CRÍTICA DE ESCOPO: Sob nenhuma hipótese inclua as informações de "Estimativa" (ou Estimativa de tempo), "Prioridade", ou "Status" das tarefas no conteúdo final do relatório ou em suas listagens. Mostre apenas o título, horário e descrição se houver.
-
-                Eis as tarefas cadastradas no sistema:
-                ${JSON.stringify(sanitizedTasksForPrompt, null, 2)}
-
-                Gere uma breve introdução de bom-dia profissional e finalize desejando uma excelente jornada. Escreva tudo em Português do Brasil.`;
-
-                const geminiResult = await generateContentWithRetryAndFallback(prompt);
-                reportContent = cleanReportContentFields(geminiResult);
-                isAiGenerated = true;
-              } catch (geminiErr: any) {
-                console.error('[Scheduler] Gemini daily automated generator failed. falling back.', geminiErr.message || geminiErr);
-              }
-            }
-
-            if (!reportContent) {
-              reportContent = generateFallbackReport(filteredTasks, brDateString);
-            } else {
-              reportContent = cleanReportContentFields(reportContent);
-            }
-
-            // Send Email
-            await sendEmail({
-              to: destEmail,
-              subject: `[VALL] Relatório Diário Automatizado - ${brDateString}`,
-              text: reportContent
-            });
-
-            // Persist that it has been sent for today to avoid double calls
-            await docProf.ref.update({
-              'dailyReportConfig.lastSentDate': brDateString
-            });
-
-            console.log(`[Scheduler] Automated report successfully sent to ${destEmail}`);
-          }
-        }
-      } catch (schedErr: any) {
-      if (schedErr?.message?.includes('PERMISSION_DENIED')) {
-        console.log('[Scheduler] Background direct DB scan restricted by security rules (expected in sandbox). Automated reports are managed safely and reliably in background via active administrator web sessions.');
-      } else {
-        console.error('[Scheduler ERROR] Failed in automated check loop details:', schedErr);
-      }
-    }
-  }, 60000); // Executed every 1 minute
-}
 
 // Vite Integration
 async function main() {
@@ -558,7 +287,6 @@ async function main() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] Listening on http://localhost:${PORT}`);
-    startDailyReportScheduler();
   });
 }
 
