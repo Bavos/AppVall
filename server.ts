@@ -12,7 +12,8 @@ import { GoogleGenAI } from '@google/genai';
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Path-safe dynamic read of firebase-applet-config.json
 const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');

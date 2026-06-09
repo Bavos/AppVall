@@ -167,12 +167,21 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
         }
       }
 
+      const destEmailResolved = (reportEmail || userProfile?.dailyReportConfig?.email || currentUser?.email || '').toLowerCase().trim();
+
       const payload = {
         adminEmail: adminEmailLower,
-        destinationEmail: reportEmail.trim() || currentUser.email,
+        destinationEmail: destEmailResolved,
         selectedDate: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0],
         tasks: tasksToSend
       };
+
+      console.log('[Gerenciamento] Triggering manual daily report with payload:', { 
+        adminEmail: payload.adminEmail, 
+        destinationEmail: payload.destinationEmail, 
+        selectedDate: payload.selectedDate, 
+        tasksCount: tasksToSend.length 
+      });
 
       const res = await fetch('/api/generate-daily-report', {
         method: 'POST',
