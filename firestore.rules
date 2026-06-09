@@ -68,6 +68,7 @@ service cloud.firestore {
              && data.dailyReportConfig.keys().hasAll(['enabled', 'email'])
              && data.dailyReportConfig.enabled is bool
              && data.dailyReportConfig.email is string
+             && (!('sendTime' in data.dailyReportConfig) || data.dailyReportConfig.sendTime is string)
              && (!('lastSentDate' in data.dailyReportConfig) || data.dailyReportConfig.lastSentDate is string)
            ));
     }
