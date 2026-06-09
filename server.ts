@@ -261,7 +261,7 @@ async function generateContentWithRetryAndFallback(prompt: string, systemInstruc
   });
 
   // Try models in order of preference
-  const modelsToTry = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.5-pro'];
   const maxRetries = 3;
 
   for (const modelName of modelsToTry) {
