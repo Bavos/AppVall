@@ -179,8 +179,19 @@ export default function Gerenciamento({ currentUser, userProfile, onTriggerToast
         body: JSON.stringify(payload)
       });
 
+      if (!res.ok) {
+        let errMsg = `Erro do Servidor (${res.status})`;
+        try {
+          const text = await res.text();
+          if (text) {
+            errMsg += `: ${text.substring(0, 100)}`;
+          }
+        } catch (tErr) {}
+        throw new Error(errMsg);
+      }
+
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (data.success) {
         setGeneratedReportPreview(data.reportMarkdown);
         const isMocked = !!(data.emailRes && data.emailRes.mock);
         setReportSendResult({

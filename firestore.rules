@@ -24,6 +24,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isSameEmail(email1, email2) {
+      return email1 == email2 || email1.matches('(?i)^' + email2 + '$');
+    }
+
     // Validation Blueprint for Task Entity
     function isValidTask(data) {
       return data.keys().hasAll(['id', 'title', 'date', 'category', 'priority', 'status', 'userEmail'])
@@ -77,10 +81,10 @@ service cloud.firestore {
     match /tasks/{taskId} {
       allow get, list: if isSignedIn() 
         && (
-          resource.data.userEmail == request.auth.token.email
+          isSameEmail(resource.data.userEmail, request.auth.token.email)
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
-            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
+            && isSameEmail(resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
           )
         );
       
@@ -88,10 +92,10 @@ service cloud.firestore {
         && isValidId(taskId)
         && isValidTask(request.resource.data)
         && (
-          request.resource.data.userEmail == request.auth.token.email
+          isSameEmail(request.resource.data.userEmail, request.auth.token.email)
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
-            && request.resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
+            && isSameEmail(request.resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
           )
         );
         
@@ -99,22 +103,22 @@ service cloud.firestore {
         && isValidTask(request.resource.data)
         && (
           (
-            resource.data.userEmail == request.auth.token.email
-            && request.resource.data.userEmail == request.auth.token.email
+            isSameEmail(resource.data.userEmail, request.auth.token.email)
+            && isSameEmail(request.resource.data.userEmail, request.auth.token.email)
           )
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
-            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
-            && request.resource.data.adminEmail == resource.data.adminEmail
+            && isSameEmail(resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
+            && isSameEmail(request.resource.data.adminEmail, resource.data.adminEmail)
           )
         );
         
       allow delete: if isSignedIn()
         && (
-          resource.data.userEmail == request.auth.token.email
+          isSameEmail(resource.data.userEmail, request.auth.token.email)
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
-            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
+            && isSameEmail(resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
           )
         );
     }
@@ -123,20 +127,20 @@ service cloud.firestore {
     match /user_profiles/{email} {
       allow get: if isSignedIn()
         && (
-          email == request.auth.token.email
+          isSameEmail(email, request.auth.token.email)
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
             && exists(/databases/$(database)/documents/user_profiles/$(email))
-            && get(/databases/$(database)/documents/user_profiles/$(email)).data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
+            && isSameEmail(get(/databases/$(database)/documents/user_profiles/$(email)).data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
           )
         );
 
       allow list: if isSignedIn()
         && (
-          email == request.auth.token.email
+          isSameEmail(email, request.auth.token.email)
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
-            && resource.data.adminEmail == get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail
+            && isSameEmail(resource.data.adminEmail, get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.adminEmail)
           )
         );
 
@@ -145,13 +149,13 @@ service cloud.firestore {
         && isValidUserProfile(request.resource.data)
         && (
           // Creating own profile as admin
-          (email == request.auth.token.email && request.resource.data.role == 'admin')
+          (isSameEmail(email, request.auth.token.email) && request.resource.data.role == 'admin')
           // Or registered as member by group's admin
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
             && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.role == 'admin'
             && request.resource.data.role == 'member'
-            && request.resource.data.adminEmail == request.auth.token.email
+            && isSameEmail(request.resource.data.adminEmail, request.auth.token.email)
           )
         );
 
@@ -159,14 +163,14 @@ service cloud.firestore {
         && isValidUserProfile(request.resource.data)
         && (
           // Personal update (e.g. password or name change)
-          (email == request.auth.token.email && request.resource.data.role == resource.data.role && request.resource.data.adminEmail == resource.data.adminEmail)
+          (isSameEmail(email, request.auth.token.email) && request.resource.data.role == resource.data.role && isSameEmail(request.resource.data.adminEmail, resource.data.adminEmail))
           // Or updated by admin
           || (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
             && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.role == 'admin'
-            && resource.data.adminEmail == request.auth.token.email
+            && isSameEmail(resource.data.adminEmail, request.auth.token.email)
             && request.resource.data.role == resource.data.role
-            && request.resource.data.adminEmail == resource.data.adminEmail
+            && isSameEmail(request.resource.data.adminEmail, resource.data.adminEmail)
           )
         );
 
@@ -176,8 +180,8 @@ service cloud.firestore {
           (
             exists(/databases/$(database)/documents/user_profiles/$(request.auth.token.email))
             && get(/databases/$(database)/documents/user_profiles/$(request.auth.token.email)).data.role == 'admin'
-            && resource.data.adminEmail == request.auth.token.email
-            && email != request.auth.token.email
+            && isSameEmail(resource.data.adminEmail, request.auth.token.email)
+            && !isSameEmail(email, request.auth.token.email)
           )
         );
     }

@@ -72,17 +72,18 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setIsSubmitting(true);
 
     try {
+      const emailLower = email.toLowerCase().trim();
       if (isSignUp) {
         // Sign Up with Firebase Auth
         let credential;
         try {
-          credential = await createUserWithEmailAndPassword(auth, email, password);
+          credential = await createUserWithEmailAndPassword(auth, emailLower, password);
           await updateProfile(credential.user, { displayName: name });
         } catch (signUpErr: any) {
           if (signUpErr.code === 'auth/email-already-in-use') {
             console.log('E-mail already exists in Firebase Auth. Attempting sign-in fallback instead...');
             try {
-              credential = await signInWithEmailAndPassword(auth, email, password);
+              credential = await signInWithEmailAndPassword(auth, emailLower, password);
             } catch (signInErr) {
               console.error('Sign-in fallback failed:', signInErr);
               throw signUpErr; // Throw original signUpErr if password is wrong
@@ -94,11 +95,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         
         // Save profile to Firestore
         // Fire and forget because await setDoc can hang indefinitely if API Key is restricted
-        setDoc(doc(db, 'user_profiles', email.toLowerCase()), {
-          email: email.toLowerCase(),
+        setDoc(doc(db, 'user_profiles', emailLower), {
+          email: emailLower,
           name: name,
           role: registerAsAdmin ? 'admin' : 'member',
-          adminEmail: email.toLowerCase(),
+          adminEmail: emailLower,
           createdAt: new Date().toISOString()
         }).catch(pfErr => {
           console.error('Erro ao salvar profile no Firestore:', pfErr);
@@ -107,7 +108,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         // Also save to local user simulation for backward compatibility and fallback
         const usersJson = localStorage.getItem('vall_users');
         let users = usersJson ? JSON.parse(usersJson) : {};
-        users[email.toLowerCase()] = { name, password };
+        users[emailLower] = { name, password };
         localStorage.setItem('vall_users', JSON.stringify(users));
 
         // Trigger backend registration workflow (Ação 1 DB sync, Ação 2 Admin email, Ação 3 User email)
@@ -119,22 +120,22 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           },
           body: JSON.stringify({
             name,
-            email: email.toLowerCase(),
+            email: emailLower,
             role: registerAsAdmin ? 'admin' : 'member',
-            adminEmail: email.toLowerCase()
+            adminEmail: emailLower
           })
         }).catch(apiErr => {
           console.error('Erro ao processar fluxo extra de registro no backend:', apiErr);
         });
 
-        onLoginSuccess({ name, email });
+        onLoginSuccess({ name, email: emailLower });
       } else {
         // Sign In with Firebase Auth
-        const credential = await signInWithEmailAndPassword(auth, email, password);
+        const credential = await signInWithEmailAndPassword(auth, emailLower, password);
         
         // Ensure user_profiles has a document for them so things synchronize correctly
         try {
-          const profileDocRef = doc(db, 'user_profiles', email.toLowerCase());
+          const profileDocRef = doc(db, 'user_profiles', emailLower);
           const fetchPromise = getDoc(profileDocRef);
           
           // Race between fetch and timeout so we never hang indefinitely
@@ -148,10 +149,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             if (!profSnap.exists()) {
               // Auto define old/unprofiled users as admin
               setDoc(profileDocRef, {
-                email: email.toLowerCase(),
+                email: emailLower,
                 name: credential.user.displayName || 'Administrador',
                 role: 'admin',
-                adminEmail: email.toLowerCase(),
+                adminEmail: emailLower,
                 createdAt: new Date().toISOString()
               }).catch(e => console.warn('Silent doc update skipped:', e));
             }
@@ -162,12 +163,12 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           console.warn('Silent user profile check/upgrade skipped:', profE);
         }
 
-        onLoginSuccess({ name: credential.user.displayName || 'Administrador', email });
+        onLoginSuccess({ name: credential.user.displayName || 'Administrador', email: emailLower });
 
         // Save simulated user details
         const usersJson = localStorage.getItem('vall_users');
         let users = usersJson ? JSON.parse(usersJson) : {};
-        users[email.toLowerCase()] = { name: credential.user.displayName || 'Renato Zarvos', password };
+        users[emailLower] = { name: credential.user.displayName || 'Renato Zarvos', password };
         localStorage.setItem('vall_users', JSON.stringify(users));
       }
     } catch (authError: any) {
@@ -183,6 +184,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
       // If sign-in failed (for example, user not found, or password invalid)
       if (!isSignUp && (authError.code === 'auth/user-not-found' || authError.code === 'auth/invalid-credential')) {
+        const emailLower = email.toLowerCase().trim();
         // Try calling the server-side login fallback API
         try {
           const controller = new AbortController();
@@ -193,7 +195,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ email: email.toLowerCase(), password }),
+            body: JSON.stringify({ email: emailLower, password }),
             signal: controller.signal
           });
           
@@ -203,7 +205,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             const apiResult = await apiResponse.json();
             if (apiResult.success) {
               // Retry standard Firebase Auth sign-in now that the user is guaranteed to be created
-              const retryCredential = await signInWithEmailAndPassword(auth, email.toLowerCase(), password);
+              const retryCredential = await signInWithEmailAndPassword(auth, emailLower, password);
               onLoginSuccess({ name: apiResult.name, email: apiResult.email });
               return;
             }
@@ -214,7 +216,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
         // Core fallback: search in firestore user_profiles for team members created by Admin (if signed in or database accessible)
         try {
-          const fetchRef = getDoc(doc(db, 'user_profiles', email.toLowerCase()));
+          const fetchRef = getDoc(doc(db, 'user_profiles', emailLower));
           const result = await Promise.race([
             fetchRef,
             new Promise<'TIMEOUT'>((resolve) => setTimeout(() => resolve('TIMEOUT'), 3000))
@@ -225,13 +227,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             if (up.password === password) {
               // Lazy recreate Firebase Auth credentials in background so it registers correctly next time!
               try {
-                createUserWithEmailAndPassword(auth, email, password).then(subCred => {
+                createUserWithEmailAndPassword(auth, emailLower, password).then(subCred => {
                   updateProfile(subCred.user, { displayName: up.name });
                 }).catch(regE => {
                   console.warn('Auto Firebase user background registration skipped or already existing:', regE);
                 });
               } catch (err) {}
-              onLoginSuccess({ name: up.name, email: email.toLowerCase() });
+              onLoginSuccess({ name: up.name, email: emailLower });
               return;
             }
           }
