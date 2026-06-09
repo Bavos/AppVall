@@ -304,6 +304,46 @@ export default function App() {
     return () => unsubscribe();
   }, [firebaseUser]);
 
+  // Self-healing migration for tasks that were incorrectly saved with a member's email as adminEmail
+  useEffect(() => {
+    if (!userProfile || !userProfile.adminEmail) return;
+
+    const emailToFilter = userProfile.email.toLowerCase();
+    const correctAdminEmail = userProfile.adminEmail.toLowerCase();
+
+    // Only run if the member is in an admin group and their profile is completed
+    if (userProfile.role === 'member' && emailToFilter !== correctAdminEmail) {
+      const runSelfHealing = async () => {
+        try {
+          const tasksCollectionRef = collection(db, 'tasks');
+          // Fetch tasks created by this user where the adminEmail is wrongly set to their own email
+          const qMigrate = query(
+            tasksCollectionRef,
+            where('userEmail', '==', emailToFilter),
+            where('adminEmail', '==', emailToFilter)
+          );
+
+          const snapshot = await getDocs(qMigrate);
+          if (!snapshot.empty) {
+            console.log(`[Self-Healing] Encontradas ${snapshot.size} tarefas para migração de adminEmail para ${correctAdminEmail}`);
+            for (const docSnap of snapshot.docs) {
+              const taskData = docSnap.data();
+              const updatedTask = {
+                ...taskData,
+                adminEmail: correctAdminEmail
+              };
+              await setDoc(doc(db, 'tasks', docSnap.id), cleanUndefined(updatedTask));
+            }
+          }
+        } catch (err) {
+          console.warn('[Self-Healing] Erro ao executar correções em lote de tarefas:', err);
+        }
+      };
+
+      runSelfHealing();
+    }
+  }, [userProfile]);
+
   // Sync tasks in real-time from Firestore when currentUser and authenticated firebaseUser are present
   useEffect(() => {
     if (!currentUser) {
@@ -336,12 +376,13 @@ export default function App() {
             !t.adminEmail || 
             t.adminEmail === 'admin@example.com' ||
             !t.userEmail || 
-            t.userEmail === 'admin@example.com';
+            t.userEmail === 'admin@example.com' ||
+            (userProfile && userProfile.role === 'member' && t.adminEmail.toLowerCase() === emailToFilter);
 
           if (isLocalOrUnassigned) {
             return {
               ...t,
-              userEmail: emailToFilter,
+              userEmail: t.userEmail && t.userEmail !== 'admin@example.com' ? t.userEmail : emailToFilter,
               adminEmail: adminEmailToFilter
             };
           }
@@ -663,7 +704,7 @@ export default function App() {
   // Atualizar dados de uma tarefa existente
   const handleUpdateTask = async (updatedTask: Task, isSilent: boolean = false) => {
     let finalTask = { ...updatedTask };
-    if (userProfile && !finalTask.adminEmail) {
+    if (userProfile && userProfile.adminEmail) {
       finalTask.adminEmail = userProfile.adminEmail.toLowerCase();
     }
 
@@ -696,6 +737,10 @@ export default function App() {
   // Adicionar nova tarefa
   const handleAddTask = async (newTaskData: Omit<Task, 'id' | 'createdAt' | 'status' | 'actualMinutes'> & { status?: TaskStatus }) => {
     const taskId = `task-${Date.now()}`;
+    const correctAdminEmail = userProfile?.adminEmail 
+      ? userProfile.adminEmail.toLowerCase() 
+      : (currentUser?.email.toLowerCase() || 'admin@example.com');
+
     const newTask: Task = {
       ...newTaskData,
       id: taskId,
@@ -703,7 +748,7 @@ export default function App() {
       actualMinutes: 0,
       createdAt: new Date().toISOString(),
       userEmail: currentUser?.email.toLowerCase() || 'admin@example.com',
-      adminEmail: userProfile?.adminEmail ? userProfile.adminEmail.toLowerCase() : (currentUser?.email.toLowerCase() || 'admin@example.com')
+      adminEmail: correctAdminEmail
     };
 
     // Sempre define a data ativa global no dia em que a tarefa foi criada
