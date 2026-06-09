@@ -20,12 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6          # Node 24 ✅
         with:
           fetch-depth: 0
 
       - name: Setup Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6        # Node 24 ✅
         with:
           node-version: 20
           cache: 'npm'
@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Run Gitleaks (Secret Scanning)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3  # Node 24 ✅
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
@@ -48,7 +48,6 @@ jobs:
           echo "NPM Audit executed."
         continue-on-error: true
 
-      # Setup Trivy separado (recomendado após incidente de supply chain mar/2026)
       - name: Setup Trivy
         uses: aquasecurity/setup-trivy@v0.2.6
         with:
@@ -64,7 +63,7 @@ jobs:
           output: 'security-reports/trivy-report.json'
           severity: 'HIGH,CRITICAL'
           exit-code: '0'
-          skip-setup-trivy: true   # já instalado no step anterior
+          skip-setup-trivy: true
         continue-on-error: true
 
       - name: Run Semgrep (SAST)
@@ -91,7 +90,7 @@ jobs:
           cat security-reports/security-summary.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Security Reports Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6   # Node 24 ✅
         with:
           name: security-audit-reports
           path: security-reports/
