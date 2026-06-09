@@ -48,8 +48,15 @@ jobs:
           echo "NPM Audit executed."
         continue-on-error: true
 
+      # Setup Trivy separado (recomendado após incidente de supply chain mar/2026)
+      - name: Setup Trivy
+        uses: aquasecurity/setup-trivy@v0.2.6
+        with:
+          version: v0.71.0
+          cache: true
+
       - name: Run Trivy (SCA)
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -57,6 +64,7 @@ jobs:
           output: 'security-reports/trivy-report.json'
           severity: 'HIGH,CRITICAL'
           exit-code: '0'
+          skip-setup-trivy: true   # já instalado no step anterior
         continue-on-error: true
 
       - name: Run Semgrep (SAST)
@@ -79,8 +87,7 @@ jobs:
           echo "" >> security-reports/security-summary.md
           echo "### 📂 Artifact Details" >> security-reports/security-summary.md
           echo "All reports are preserved in the **security-audit-reports** artifact under the run summary." >> security-reports/security-summary.md
-          
-          # Write report directly to GITHUB_STEP_SUMMARY to permit instant download/view in Actions panel
+
           cat security-reports/security-summary.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Security Reports Artifact
@@ -88,3 +95,4 @@ jobs:
         with:
           name: security-audit-reports
           path: security-reports/
+          
