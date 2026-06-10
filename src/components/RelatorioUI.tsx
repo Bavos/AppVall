@@ -30,7 +30,7 @@ export default function RelatorioUI({ tasks, userName, onTriggerToast, defaultOp
   };
 
   // Estados dos filtros
-  const [dataInicio, setDataInicio] = useState<string>(getFutureDateStr(-30));
+  const [dataInicio, setDataInicio] = useState<string>(getTodayDateStr());
   const [dataFim, setDataFim] = useState<string>(getFutureDateStr(30));
   const [selectedCategories, setSelectedCategories] = useState<TaskCategory[]>([
     'Agendamento',
