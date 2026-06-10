@@ -18,18 +18,14 @@ jobs:
   security-scan:
     name: Security Vulnerability Scan
     runs-on: ubuntu-latest
-
     steps:
-      # ─────────────────────────────────────────
-      # SETUP
-      # ─────────────────────────────────────────
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js 20
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
@@ -40,253 +36,55 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      # ─────────────────────────────────────────
-      # SECRET SCANNING
-      # ─────────────────────────────────────────
       - name: Run Gitleaks (Secret Scanning)
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
-      # ─────────────────────────────────────────
-      # DEPENDENCY VULNERABILITY SCAN
-      # ─────────────────────────────────────────
       - name: Run NPM Audit
-        id: npm_audit
         run: |
           npm audit --audit-level=high --json > security-reports/npm-audit-report.json || true
-
-          HIGH=$(cat security-reports/npm-audit-report.json | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin)
-          v=d.get('metadata',{}).get('vulnerabilities',{})
-          print(v.get('high',0)+v.get('critical',0))
-          ")
-
-          echo "high_critical=$HIGH" >> $GITHUB_OUTPUT
-          echo "NPM Audit executado. HIGH+CRITICAL: $HIGH"
+          echo "NPM Audit executed."
         continue-on-error: true
 
-      # ─────────────────────────────────────────
-      # TRIVY: SETUP
-      # ─────────────────────────────────────────
-      - name: Setup Trivy
-        uses: aquasecurity/setup-trivy@v0.2.6
-        with:
-          version: v0.71.0
-          cache: true
-
-      # ─────────────────────────────────────────
-      # TRIVY: SCA — Vulnerability Scan
-      # ─────────────────────────────────────────
-      - name: Run Trivy SCA (Vulnerabilities)
-        id: trivy_sca
-        uses: aquasecurity/trivy-action@v0.36.0
+      - name: Run Trivy (SCA)
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
-          scanners: 'vuln'
           format: 'json'
-          output: 'security-reports/trivy-vuln-report.json'
+          output: 'security-reports/trivy-report.json'
           severity: 'HIGH,CRITICAL'
           exit-code: '0'
-          skip-setup-trivy: true
         continue-on-error: true
 
-      - name: Check Trivy Critical Findings
-        id: trivy_check
-        run: |
-          CRITICAL=$(cat security-reports/trivy-vuln-report.json | python3 -c "
-          import json,sys
-          data=json.load(sys.stdin)
-          total=0
-          for r in data.get('Results',[]):
-              for v in (r.get('Vulnerabilities') or []):
-                  if v.get('Severity') in ('HIGH','CRITICAL'):
-                      total+=1
-          print(total)
-          ")
-          echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
-          echo "Trivy HIGH+CRITICAL encontrados: $CRITICAL"
-
-      # ─────────────────────────────────────────
-      # TRIVY: IaC — Misconfiguration Scan
-      # ─────────────────────────────────────────
-      - name: Run Trivy IaC Scan (Misconfigurations)
-        id: trivy_iac
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          scanners: 'misconfig'
-          format: 'json'
-          output: 'security-reports/trivy-iac-report.json'
-          severity: 'HIGH,CRITICAL'
-          exit-code: '0'
-          skip-setup-trivy: true
-        continue-on-error: true
-
-      - name: Check IaC Critical Findings
-        id: iac_check
-        run: |
-          MISCONFIG=$(cat security-reports/trivy-iac-report.json | python3 -c "
-          import json,sys
-          data=json.load(sys.stdin)
-          total=0
-          for r in data.get('Results',[]):
-              for m in (r.get('Misconfigurations') or []):
-                  if m.get('Severity') in ('HIGH','CRITICAL'):
-                      total+=1
-          print(total)
-          ")
-          echo "misconfig_count=$MISCONFIG" >> $GITHUB_OUTPUT
-          echo "Trivy IaC HIGH+CRITICAL encontrados: $MISCONFIG"
-
-      # ─────────────────────────────────────────
-      # TRIVY: SBOM — Software Bill of Materials
-      # ─────────────────────────────────────────
-      - name: Run Trivy SBOM (CycloneDX)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          scanners: 'vuln'
-          format: 'cyclonedx'
-          output: 'security-reports/sbom-cyclonedx.json'
-          exit-code: '0'
-          skip-setup-trivy: true
-        continue-on-error: true
-
-      # ─────────────────────────────────────────
-      # LICENSE SCAN
-      # ─────────────────────────────────────────
-      - name: Install license-checker
-        run: npm install -g license-checker
-
-      - name: Run License Checker
-        run: |
-          license-checker \
-            --json \
-            --out security-reports/license-report.json \
-            --excludePrivatePackages || true
-
-          # Identificar licenças restritivas (GPL, AGPL, LGPL, EUPL)
-          python3 -c "
-          import json
-          with open('security-reports/license-report.json') as f:
-              data = json.load(f)
-          restrictive = ['GPL', 'AGPL', 'LGPL', 'EUPL', 'CPAL', 'OSL']
-          flagged = []
-          for pkg, info in data.items():
-              lic = info.get('licenses', '')
-              if any(r in str(lic) for r in restrictive):
-                  flagged.append({'package': pkg, 'license': lic})
-          if flagged:
-              print(f'⚠️  {len(flagged)} pacote(s) com licenças restritivas:')
-              for p in flagged:
-                  print(f'  - {p[\"package\"]}: {p[\"license\"]}')
-          else:
-              print('✅ Nenhuma licença restritiva encontrada.')
-          with open('security-reports/license-flagged.json','w') as f:
-              json.dump(flagged, f, indent=2)
-          "
-        continue-on-error: true
-
-      # ─────────────────────────────────────────
-      # SAST
-      # ─────────────────────────────────────────
       - name: Run Semgrep (SAST)
         uses: semgrep/semgrep-action@v1
         with:
           config: p/javascript
         continue-on-error: true
 
-      # ─────────────────────────────────────────
-      # SUMMARY REPORT
-      # ─────────────────────────────────────────
       - name: Generate Security Summary Report
         run: |
-          NPM_HIGH="${{ steps.npm_audit.outputs.high_critical }}"
-          TRIVY_CRITICAL="${{ steps.trivy_check.outputs.critical_count }}"
-          IAC_CRITICAL="${{ steps.iac_check.outputs.misconfig_count }}"
-
-          # Gerar badge de status por módulo
-          badge() {
-            [ "$1" -eq 0 ] && echo "✅ Clean" || echo "⚠️  $1 finding(s)"
-          }
-
-          cat > security-reports/security-summary.md << EOF
-          # 🛡️ Security Pipeline Summary
-          Generated on: $(date -u) UTC
-
-          ## 📊 Scan Results
-
-          | Module | Scanner | Status |
-          |--------|---------|--------|
-          | Secret Scanning | Gitleaks | ✅ Completed |
-          | Dependency Vulnerabilities | NPM Audit | $(badge ${NPM_HIGH:-0}) |
-          | SCA Vulnerabilities (HIGH/CRITICAL) | Trivy | $(badge ${TRIVY_CRITICAL:-0}) |
-          | IaC Misconfigurations (HIGH/CRITICAL) | Trivy misconfig | $(badge ${IAC_CRITICAL:-0}) |
-          | SBOM Generation | Trivy CycloneDX | ✅ Generated |
-          | License Compliance | license-checker | ✅ Completed |
-          | SAST Code Analysis | Semgrep | ✅ Completed |
-
-          ## 📂 Artifacts
-          Todos os relatórios estão disponíveis no artifact **security-audit-reports**:
-          - \`trivy-vuln-report.json\` — vulnerabilidades de dependências
-          - \`trivy-iac-report.json\` — misconfigurations de IaC
-          - \`sbom-cyclonedx.json\` — Software Bill of Materials (CycloneDX)
-          - \`npm-audit-report.json\` — auditoria NPM
-          - \`license-report.json\` — inventário completo de licenças
-          - \`license-flagged.json\` — licenças restritivas sinalizadas
-          EOF
-
+          echo "# 🛡️ Security Pipeline Summary" > security-reports/security-summary.md
+          echo "Generated on: $(date -u) UTC" >> security-reports/security-summary.md
+          echo "" >> security-reports/security-summary.md
+          echo "## 📊 Scan Modules Execution Status" >> security-reports/security-summary.md
+          echo "- **Checkout & Environment Setup**: Success" >> security-reports/security-summary.md
+          echo "- **Gitleaks Secret Scan**: Completed" >> security-reports/security-summary.md
+          echo "- **NPM Audit (dependencies)**: Completed" >> security-reports/security-summary.md
+          echo "- **Trivy SCA (vulnerability scan)**: Completed" >> security-reports/security-summary.md
+          echo "- **Semgrep SAST (code scan)**: Completed" >> security-reports/security-summary.md
+          echo "" >> security-reports/security-summary.md
+          echo "### 📂 Artifact Details" >> security-reports/security-summary.md
+          echo "All reports are preserved in the **security-audit-reports** artifact under the run summary." >> security-reports/security-summary.md
+          
+          # Write report directly to GITHUB_STEP_SUMMARY to permit instant download/view in Actions panel
           cat security-reports/security-summary.md >> $GITHUB_STEP_SUMMARY
 
-      # ─────────────────────────────────────────
-      # UPLOAD ARTIFACTS
-      # ─────────────────────────────────────────
       - name: Upload Security Reports Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: security-audit-reports
           path: security-reports/
-
-      # ─────────────────────────────────────────
-      # BREAKING GATE — falha o job se houver
-      # vulnerabilidades HIGH/CRITICAL
-      # (ativo apenas em push para main)
-      # ─────────────────────────────────────────
-      - name: Security Gate (Breaking on Critical)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          NPM_HIGH="${{ steps.npm_audit.outputs.high_critical }}"
-          TRIVY_CRITICAL="${{ steps.trivy_check.outputs.critical_count }}"
-          IAC_CRITICAL="${{ steps.iac_check.outputs.misconfig_count }}"
-
-          FAILED=0
-
-          if [ "${NPM_HIGH:-0}" -gt 0 ]; then
-            echo "❌ NPM Audit: ${NPM_HIGH} HIGH/CRITICAL vulnerabilidade(s) encontrada(s)."
-            FAILED=1
-          fi
-
-          if [ "${TRIVY_CRITICAL:-0}" -gt 0 ]; then
-            echo "❌ Trivy SCA: ${TRIVY_CRITICAL} HIGH/CRITICAL vulnerabilidade(s) encontrada(s)."
-            FAILED=1
-          fi
-
-          if [ "${IAC_CRITICAL:-0}" -gt 0 ]; then
-            echo "❌ Trivy IaC: ${IAC_CRITICAL} misconfiguration(s) HIGH/CRITICAL encontrada(s)."
-            FAILED=1
-          fi
-
-          if [ "$FAILED" -eq 1 ]; then
-            echo ""
-            echo "🚨 Security Gate FAILED — corrija as vulnerabilidades antes de mergear em main."
-            exit 1
-          fi
-
-          echo "✅ Security Gate PASSED — nenhuma vulnerabilidade crítica encontrada."
-

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Grid, PlusSquare, LogOut, RefreshCw, Sparkles, CheckCircle2, FileText, X, Users } from 'lucide-react';
+import { Calendar, Grid, PlusSquare, LogOut, RefreshCw, Sparkles, CheckCircle2, FileText, X, Users, Wifi, WifiOff } from 'lucide-react';
 import { Task, ViewTab, FocusSession, TaskStatus } from './types';
 import { DEFAULT_TASKS, getTodayDateString, formatToRelativeDate } from './utils';
 import Dashboard from './components/Dashboard';
@@ -59,6 +59,26 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [focusTrigger, setFocusTrigger] = useState<number>(0);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isFromCache, setIsFromCache] = useState(false);
+
+  // Monitoramento de conexão da rede (online/offline)
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      triggerToast('Conexão restabelecida! Banco de dados sincronizado.');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      triggerToast('Você está offline. Alterações salvas em cache local.');
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Listener de 'window focus' e 'visibilitychange' para re-sincronizar dados em tempo real
   useEffect(() => {
@@ -408,6 +428,7 @@ export default function App() {
     const q = query(tasksCollectionRef, where('adminEmail', '==', adminEmailToFilter));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
+      setIsFromCache(snapshot.metadata.fromCache);
       const fetchedTasks: Task[] = [];
       snapshot.forEach((docSnap) => {
         fetchedTasks.push(docSnap.data() as Task);
@@ -465,6 +486,7 @@ export default function App() {
       setTasks(fetchedTasks);
     }, (error) => {
       onSnapshot(query(tasksCollectionRef, where('userEmail', '==', emailToFilter)), (fallbackSnap) => {
+        setIsFromCache(fallbackSnap.metadata.fromCache);
         const fetchedTasks: Task[] = [];
         fallbackSnap.forEach((docSnap) => {
           fetchedTasks.push(docSnap.data() as Task);
@@ -978,22 +1000,42 @@ export default function App() {
             <div className="w-8 h-8 bg-[#2DD4BF] rounded-lg flex items-center justify-center font-black text-black text-lg italic select-none">V</div>
             <h1 className="text-3xl font-black italic tracking-tighter uppercase text-white select-none">Vall</h1>
           </div>
-          {googleToken ? (
-            <div className="flex items-center space-x-1 mt-2.5 bg-[#2DD4BF]/10 border border-[#2DD4BF]/20 rounded-full px-2.5 py-1 text-[9px] font-bold text-[#2DD4BF] w-fit">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] shrink-0 animate-ping" />
-              <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] shrink-0 absolute" />
-              <span className="truncate max-w-[140px] font-mono">Agenda: {googleUser?.email || localStorage.getItem('vall_google_email') || 'Google'}</span>
-            </div>
-          ) : (
-            <button 
-              onClick={handleGoogleSignIn}
-              className="flex items-center space-x-1.5 mt-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-full px-2.5 py-1 text-[9px] font-bold text-amber-300 w-fit transition cursor-pointer active:scale-95"
-              title="Clique para sincronizar sua agenda agora em 1 segundo!"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
-              <span className="font-mono">Google Agenda (Desconectada)</span>
-            </button>
-          )}
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
+            {googleToken ? (
+              <div className="flex items-center space-x-1 bg-[#2DD4BF]/10 border border-[#2DD4BF]/20 rounded-full px-2.5 py-1 text-[9px] font-bold text-[#2DD4BF] w-fit relative">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] shrink-0 animate-ping" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#2DD4BF] shrink-0 absolute" />
+                <span className="truncate max-w-[124px] font-mono pl-3">Agenda: {googleUser?.email || localStorage.getItem('vall_google_email') || 'Google'}</span>
+              </div>
+            ) : (
+              <button 
+                onClick={handleGoogleSignIn}
+                className="flex items-center space-x-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-full px-2.5 py-1 text-[9px] font-bold text-amber-300 w-fit transition cursor-pointer active:scale-95"
+                title="Clique para sincronizar sua agenda agora em 1 segundo!"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                <span className="font-mono">Google Agenda (Desconectada)</span>
+              </button>
+            )}
+
+            {isOnline ? (
+              <div 
+                className="flex items-center space-x-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-1 text-[9px] font-bold text-emerald-400 w-fit"
+                title={isFromCache ? "Dados carregados do cache local rápido e sincronizando em segundo plano." : "Sua conexão está ativa e os dados são salvos em tempo real."}
+              >
+                <Wifi size={10} className="shrink-0 text-emerald-400" />
+                <span className="font-mono">{isFromCache ? "Salvo (Cache)" : "Em Tempo Real"}</span>
+              </div>
+            ) : (
+              <div 
+                className="flex items-center space-x-1 bg-red-400/10 border border-red-500/25 rounded-full px-2.5 py-1 text-[9px] font-bold text-red-400 w-fit"
+                title="Você está offline. Todas as alterações serão mantidas em cache e enviadas quando houver conexão."
+              >
+                <WifiOff size={10} className="shrink-0 text-red-500 animate-pulse" />
+                <span className="font-mono">Cache Local (Offline)</span>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex space-x-3 mt-1">
           <div 

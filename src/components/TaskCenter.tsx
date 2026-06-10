@@ -658,22 +658,9 @@ export default function TaskCenter({
                       </div>
                     )}
 
-                    {/* Estimativa de Tempo de Foco */}
+                    {/* Botões de Ação */}
 
-                    <div className="flex justify-between items-center pt-3 border-t border-white/5">
-                      <div className="flex items-center space-x-2 text-sm text-gray-300">
-                        <Clock size={16} />
-                        <span>Estimativa:</span>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={editEstimated}
-                          onChange={(e) => setEditEstimated(Number(e.target.value))}
-                          className="w-14 bg-white/5 border border-white/10 rounded-xl px-2.5 py-2 text-center text-base text-white min-h-[40px]"
-                        />
-                        <span>m</span>
-                      </div>
-
+                    <div className="flex justify-end items-center pt-3 border-t border-white/5">
                       <div className="flex space-x-2.5">
                         <button
                           type="button"
