@@ -95,15 +95,22 @@ Cada tarefa emite um modelo de dados refinado integrado à agenda do usuário, s
 4. **Notas**:
    - Registros de ocorrência, anotações rápidas e feedbacks clínicos consolidados no histórico diário de execução.
 
-### 4.3 Produtividade, Foco e Sessões Pomodoro
-- **Focus Timer**: Cronômetro de execução integrado a cada tarefa. Permite que o membro da equipe ligue a contagem regressiva dedicada enquanto estiver focado.
-- **Métricas de Fechamento**: Registro automatizado da relação `Tempo Estimado vs. Tempo Real Executado` (`estimatedMinutes` vs `actualMinutes`), permitindo ao gestor avaliar e calibrar o esforço de cada colaborador no painel de estatísticas.
+### 4.3 Produtividade, Foco e Simplificação Operacional
+- **Focus Timer**: Cronômetro de execução integrado a cada tarefa. Permite que o membro da equipe ligue o cronômetro dedicado enquanto estiver focado.
+- **Retirada de Estimativas (Simplificação)**: Conforme diretrizes de usabilidade, toda a funcionalidade de "Estimativa de tempo" (horas estimadas, minutos estimados e campos de inserção manual de estimativas) foi completamente removida de todas as ações e painéis do aplicativo. O sistema passa a focar estritamente no tempo real de execução e na simplificação visual absoluto, despoluindo a interface para o usuário final.
 
 ### 4.4 Gerador de Relatórios Diários Inteligentes (Gemini + SMTP Engine)
-- **Geração por Demanda e Configuração Flexível**: No painel de gerenciamento, o administrador pode parametrizar o horário customizado de envio automático do relatório (ex: `08:00`, `19:30`, fuso de Brasília (BRT / UTC-3)). O e-mail destinatário é fixado por segurança ao e-mail de login autenticado (sem possibilidade de edição), impedindo vazamentos ou envios indesejados para correios externos. O sistema reúne as tarefas e anotações e formata uma síntese executiva de nível profissional.
+- **Geração por Demanda e Configuração Flexível**: No painel de gerenciamento, o administrador pode registrar parâmetros do relatório (fuso de Brasília, BRT / UTC-3). O sistema destina o sumário sem as estimativas de tempo removidas (mostrando apenas os títulos, horários e descrições), e formata uma síntese executiva impecável.
 - **Resiliência e Escalaridade da IA**: O motor de inteligência artificial conta com um pipeline de tentativas automático com backoff exponencial e fallback dinâmico de modelos generativos (chaveando inteligentemente de `gemini-3.5-flash` para `gemini-3.1-flash-lite`). Isso neutraliza gargalos de alta demanda ("UNAVAILABLE", erro 503 ou 429) e garante a entrega ininterrupta dos resumos.
 - **Execução Background Autônoma & Segurança**: Para garantir o envio regular sem as barreiras e restrições de permissões das contas de serviço do Cloud local no sandbox, o sistema emprega uma arquitetura híbrida: um loop de agendamento em background no servidor operando a cada minuto monitora e aciona os perfis, e os clients (navegadores) ativos dos administradores atuam como ativadores secundários transmitindo os lotes de tarefas autoritativamente para a API.
 - **Entrega SMTP Robustecida**: O motor suporta chaves e credenciais contendo caracteres especiais com tratamento especial de codificação que previne falhas de autolimitação e falha de login (Erro 535) nas conexões de servidores de correio padrão Corporativos e Gmail App Passwords.
+
+### 4.5 Indicador Visual de Status de Sincronização (Online/Offline)
+- **Detector de Estado da Rede**: Monitoramento contínuo das conexões com a Web de forma reativa a eventos `online` e `offline` do navegador.
+- **Sinalização no Cabeçalho**: Apresentação visual e textualmente amigável no topo do aplicativo indicando o status das transações com o Firestore:
+  - **Em Tempo Real** (Verde/Online): Conexão ativa, transmitindo e persistindo dados diretamente na nuvem em tempo real.
+  - **Salvo (Cache)** (Verde/Online com Cache): Sinaliza que as tarefas foram lidas/carregadas do cache de alta performance e estão sendo atualizadas em segundo plano.
+  - **Cache Local (Offline)** (Vermelho/Offline/Pulse): Indica que o usuário está desconectado da rede, informando que os dados e edições criados estão salvos com absoluta segurança no cache local estruturado e pendentes de sincronismo automático assim que a conexão for restabelecida.
 
 ---
 
@@ -131,7 +138,7 @@ Cada perfil reside no documento correspondente ao e-mail lowercase do usuário.
 ```
 
 ### 5.2 Coleção: `tasks`
-Gerencia todo o repositório de atividades de forma atomizada para fácil pesquisa indexada:
+Gerencia todo o repositório de atividades de forma de-estimada e simplificada para fácil pesquisa indexada:
 
 ```json
 {
@@ -143,7 +150,6 @@ Gerencia todo o repositório de atividades de forma atomizada para fácil pesqui
   "category": "Agendamento",
   "priority": "Alta",
   "status": "Em Progresso",
-  "estimatedMinutes": 60,
   "actualMinutes": 45,
   "createdAt": "2026-06-09T10:00:00.000Z",
   "userEmail": "membro@empresa.com",
